@@ -190,7 +190,7 @@ const writeColumnTemplate = (map: Y.Map<unknown>, template: ColumnTemplate) =>
 export function applySchemaToYDoc(ydoc: Y.Doc, next: Schema, origin?: unknown) {
   const root = schemaRoot(ydoc);
   ydoc.transact(() => {
-    writeFields(root.meta, { id: next.id, name: next.name, schemaFormatVersion: next.schemaFormatVersion ?? SCHEMA_FORMAT_VERSION });
+    writeFields(root.meta, { id: next.id, name: next.name, schemaFormatVersion: next.schemaFormatVersion ?? SCHEMA_FORMAT_VERSION, documentation: next.documentation || undefined });
     reconcileList(root.tables, next.tables, writeTable);
     reconcileList(root.relationships, next.relationships ?? [], writeRelationship);
     reconcileList(root.groups, next.groups ?? [], writeGroup);
@@ -301,5 +301,6 @@ export function schemaFromYDoc(
     memos: read<Memo>(root.memos, MEMO_KEYS),
     queries: read<SavedQuery>(root.queries, QUERY_KEYS),
     columnTemplates: read<ColumnTemplate>(root.columnTemplates, TEMPLATE_KEYS),
+    ...(typeof root.meta.get("documentation") === "string" ? { documentation: root.meta.get("documentation") as string } : {}),
   };
 }

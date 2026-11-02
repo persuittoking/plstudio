@@ -46,6 +46,7 @@ export function exportSchemaJson(schema: Schema, exportedAt = new Date().toISOSt
         memos: schema.memos ?? [],
         queries: schema.queries ?? [],
         columnTemplates: schema.columnTemplates ?? [],
+        documentation: schema.documentation ?? "",
       },
     } satisfies SchemaExport,
     null,
@@ -214,6 +215,7 @@ export function parseSchemaJson(text: string): ParseResult {
     memos: normalizeMemos(rawSchema.memos),
     queries: normalizeQueries(rawSchema.queries),
     columnTemplates: normalizeColumnTemplates(rawSchema.columnTemplates),
+    ...(str(rawSchema.documentation) ? { documentation: str(rawSchema.documentation) } : {}),
   };
   /*
    * `prepareCanvasSchema`'s pipeline minus `repairInitialLayout`: that one

@@ -62,7 +62,7 @@ export function Modals({
   onJumpToTable,
 }: ModalsProps) {
   const { modal, setModal } = useLayout();
-  const { schema, errors } = useSchema();
+  const { schema, errors, commitWith } = useSchema();
   const close = (open: boolean) => !open && setModal(null);
   /*
    * A dialog mounts on its first opening and then stays, closed: unmounting it
@@ -93,6 +93,8 @@ export function Modals({
         onExportTabChange={setExportTab}
         baseline={baseline}
         onBaselineChange={setBaseline}
+        readOnly={readOnly}
+        onDocumentationChange={(documentation) => commitWith((current) => ({ ...current, documentation: documentation || undefined }))}
       />}
       {opened.has("import") && <ImportModal
         isOpen={modal === "import"}

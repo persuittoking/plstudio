@@ -18,7 +18,7 @@ import {
   type SchemaGroup,
   type Table,
 } from "@/app/lib/schema";
-import { CROW_MANY, CROW_MARKER_SIZE, CROW_ONE, crowMarker, curvePath, facingSide, fanPorts, idealBend } from "./edge-routing";
+import { CROW_MANY, CROW_MARKER_SIZE, CROW_ONE, crowMarker, curvePath, edgePath, facingSide, fanPorts, idealBend, routeEdges } from "./edge-routing";
 import { relationshipCardinalities } from "./geometry";
 
 /**
@@ -167,7 +167,13 @@ const markerDefs = (color: string) =>
  */
 const corner = (px: number) => Math.round(px * (10 / 14) * 10) / 10;
 
-export function renderDiagramSVG(schema: Schema, { theme = "light" }: { theme?: DiagramTheme } = {}) {
+/**
+ * `edges` picks the line style: `curved` (the document card style, the default)
+ * or `straight` -- out of the card sideways, one right-angle turn with the
+ * canvas's rounded corner, routed past the other cards, exactly as the canvas
+ * draws them.
+ */
+export function renderDiagramSVG(schema: Schema, { theme = "light", edges: edgeStyle = "curved" }: { theme?: DiagramTheme; edges?: "curved" | "straight" } = {}) {
   const colors = THEMES[theme];
   const canonical = schema.relationships?.length ? schema : normalizeRelationships(schema);
   const layout = reflowDiagram(canonical);
@@ -264,9 +270,14 @@ export function renderDiagramSVG(schema: Schema, { theme = "light" }: { theme?: 
     ].join("");
   });
 
+  // Straight lines turn where the canvas's router puts them: clear of every other card and of each other.
+  const bends = edgeStyle === "straight"
+    ? routeEdges(edges, canonical.tables.map((table) => ({ id: table.id, ...boxOf(table) })))
+    : new Map<string, number>();
   const lines = edges.map((edge) => {
     const [fromCardinality, toCardinality] = relationshipCardinalities(edge.relationship);
-    return `<path d="${curvePath(edge.from, edge.to)}" fill="none" stroke="${colors.edge}" stroke-width="1.3" marker-start="url(#crow-${crowMarker(fromCardinality)})" marker-end="url(#crow-${crowMarker(toCardinality)})"><title>${escapeXml(edge.name)}</title></path>`;
+    const d = edgeStyle === "straight" ? edgePath(edge.from, edge.to, bends.get(edge.id) ?? idealBend(edge.from, edge.to)) : curvePath(edge.from, edge.to);
+    return `<path d="${d}" fill="none" stroke="${colors.edge}" stroke-width="1.3" marker-start="url(#crow-${crowMarker(fromCardinality)})" marker-end="url(#crow-${crowMarker(toCardinality)})"><title>${escapeXml(edge.name)}</title></path>`;
   });
 
   const cards = canonical.tables.map((table, index) => {
