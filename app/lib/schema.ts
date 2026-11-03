@@ -1,5 +1,5 @@
 export const ORACLE_VERSION = "12.2+" as const;
-export const SCHEMA_FORMAT_VERSION = 8 as const;
+export const SCHEMA_FORMAT_VERSION = 9 as const;
 
 export const ORACLE_TYPES = [
   "VARCHAR2",
@@ -168,6 +168,11 @@ export type Schema = {
   queries?: SavedQuery[];
   /** The project's own column templates. Absent and empty mean the same thing. */
   columnTemplates?: ColumnTemplate[];
+  /**
+   * The written document behind the Export dialog's Document tab: Markdown with
+   * the blocks `app/lib/documentation.ts` adds. Absent and empty mean the same thing.
+   */
+  documentation?: string;
   updatedAt?: string;
 };
 

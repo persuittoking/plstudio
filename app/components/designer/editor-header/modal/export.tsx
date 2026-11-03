@@ -7,7 +7,9 @@ import { generateDDL, generateDML, generateMermaidER } from "@/app/lib/generator
 import { generateMigration } from "@/app/lib/migration";
 import { parseCreateTable } from "@/app/lib/parser";
 import { exportSchemaJson, parseSchemaJson } from "@/app/lib/schema-json";
+import { documentTemplate } from "@/app/lib/documentation";
 import { renderDiagramSVG, type DiagramTheme } from "../../diagram-svg";
+import { DocumentTab } from "./document-tab";
 import { svgToPng } from "./svg-to-png";
 import type { Schema } from "@/app/lib/schema";
 import type { ValidationIssue } from "@/app/lib/validation";
@@ -18,7 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { highlightJson, highlightMermaid, highlightSql } from "../../highlight";
 
-export type ExportTab = "ddl" | "dml" | "migration" | "mermaid" | "json" | "image";
+export type ExportTab = "ddl" | "dml" | "migration" | "mermaid" | "json" | "image" | "document";
 
 /**
  * What a migration is generated *from*: the database as it stands, which the
@@ -34,6 +36,7 @@ const exportTabs = [
   ["mermaid", "Mermaid"],
   ["json", "JSON"],
   ["image", "Image"],
+  ["document", "Document"],
 ] as const satisfies ReadonlyArray<readonly [ExportTab, string]>;
 
 /** `file.text()` resolves eagerly, so a huge file would freeze the tab first. */
@@ -53,6 +56,8 @@ export const ExportModal = ({
   onExportTabChange: setExportTab,
   baseline,
   onBaselineChange,
+  readOnly,
+  onDocumentationChange,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -64,6 +69,8 @@ export const ExportModal = ({
   onExportTabChange: (tab: ExportTab) => void;
   baseline: MigrationBaseline | null;
   onBaselineChange: (baseline: MigrationBaseline | null) => void;
+  readOnly: boolean;
+  onDocumentationChange: (text: string) => void;
 }) => {
   const [copied, setCopied] = useState(false);
   const [baselineError, setBaselineError] = useState<string | null>(null);
@@ -94,6 +101,7 @@ export const ExportModal = ({
     () => (isOpen && exportTab === "image" ? renderDiagramSVG(schema, { theme: imageTheme }) : ""),
     [exportTab, imageTheme, isOpen, schema],
   );
+  const isDocument = exportTab === "document";
   const isJson = exportTab === "json";
   const isMigration = exportTab === "migration";
   const isImage = exportTab === "image";
@@ -109,7 +117,9 @@ export const ExportModal = ({
             ? (migration?.sql ?? "")
             : isImage
               ? svg
-              : json;
+              : isDocument
+                ? (schema.documentation?.trim() ? schema.documentation : documentTemplate(schema))
+                : json;
 
   const openBaseline = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -150,7 +160,7 @@ export const ExportModal = ({
   };
   const download = () =>
     save(
-      new Blob([output], { type: isJson ? "application/json" : isImage ? "image/svg+xml" : "text/plain" }),
+      new Blob([output], { type: isJson ? "application/json" : isImage ? "image/svg+xml" : isDocument ? "text/markdown" : "text/plain" }),
       isJson
         ? `${fileSlug(schema.name)}.json`
         : isMermaid
@@ -159,6 +169,8 @@ export const ExportModal = ({
             ? `${fileSlug(schema.name)}-migration.sql`
             : isImage
               ? `${fileSlug(schema.name)}.svg`
+              : isDocument
+                ? `${fileSlug(schema.name)}-document.md`
               : exportTab === "dml"
                 ? "dml.sql"
                 : "schema.sql",
@@ -178,7 +190,7 @@ export const ExportModal = ({
     <Dialog
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      className="sm:max-w-3xl"
+      className={isDocument ? "sm:max-w-5xl" : "sm:max-w-3xl"}
     >
       <DialogHeader>
         <DialogTitle className="sr-only">Export SQL</DialogTitle>
@@ -205,7 +217,7 @@ export const ExportModal = ({
           </div>
         </div>
         {/* A JSON or Mermaid export is a snapshot of the diagram, not generated Oracle SQL, so an Oracle DDL error does not block it. */}
-        {errors.length > 0 && !isJson && !isMermaid && !isImage && (
+        {errors.length > 0 && !isJson && !isMermaid && !isImage && !isDocument && (
           <Alert variant="destructive" className="mt-4">
             <XIcon/>
             <AlertTitle>
@@ -303,7 +315,19 @@ export const ExportModal = ({
             />
           )}
         </TabsContent>
-        {exportTabs.filter(([key]) => key !== "migration" && key !== "image").map(([key]) => (
+        <TabsContent id="document">
+          {/* Mounted only while open: it renders diagrams, which a closed dialog has no use for. */}
+          {isOpen && isDocument && (
+            <DocumentTab
+              schema={schema}
+              readOnly={readOnly}
+              fileBase={fileSlug(schema.name)}
+              save={save}
+              onDocumentationChange={onDocumentationChange}
+            />
+          )}
+        </TabsContent>
+        {exportTabs.filter(([key]) => key !== "migration" && key !== "image" && key !== "document").map(([key]) => (
           <TabsContent key={key} id={key}>
             <pre className="code">
               <code>
