@@ -20,3 +20,5 @@ graphify-out/
 
 # macOS Finder metadata.
 .DS_Store
+
+.playwright-mcp
