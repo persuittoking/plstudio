@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import {
   currentTableColor,
+  normalizeLint,
   SCHEMA_FORMAT_VERSION,
   type Column,
   type ColumnTemplate,
@@ -190,7 +191,7 @@ const writeColumnTemplate = (map: Y.Map<unknown>, template: ColumnTemplate) =>
 export function applySchemaToYDoc(ydoc: Y.Doc, next: Schema, origin?: unknown) {
   const root = schemaRoot(ydoc);
   ydoc.transact(() => {
-    writeFields(root.meta, { id: next.id, name: next.name, schemaFormatVersion: next.schemaFormatVersion ?? SCHEMA_FORMAT_VERSION, documentation: next.documentation || undefined });
+    writeFields(root.meta, { id: next.id, name: next.name, schemaFormatVersion: next.schemaFormatVersion ?? SCHEMA_FORMAT_VERSION, documentation: next.documentation || undefined, lintDisabled: next.lint?.disabled.length ? next.lint.disabled : undefined });
     reconcileList(root.tables, next.tables, writeTable);
     reconcileList(root.relationships, next.relationships ?? [], writeRelationship);
     reconcileList(root.groups, next.groups ?? [], writeGroup);
@@ -302,5 +303,6 @@ export function schemaFromYDoc(
     queries: read<SavedQuery>(root.queries, QUERY_KEYS),
     columnTemplates: read<ColumnTemplate>(root.columnTemplates, TEMPLATE_KEYS),
     ...(typeof root.meta.get("documentation") === "string" ? { documentation: root.meta.get("documentation") as string } : {}),
+    ...normalizeLint({ disabled: root.meta.get("lintDisabled") }),
   };
 }

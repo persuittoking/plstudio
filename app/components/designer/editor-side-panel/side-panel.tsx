@@ -137,7 +137,7 @@ export function SidePanel({
           </ToggleGroup>
         </div>
 
-        <Issues />
+        <Issues readOnly={readOnly} />
       </SidebarFooter>
     </Sidebar>
   );

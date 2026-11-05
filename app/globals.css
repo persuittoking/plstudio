@@ -2116,8 +2116,53 @@ body {
 .issue.error {
   border-left-color: var(--danger);
 }
+.issue.suggestion {
+  border-left-color: var(--primary);
+  margin-bottom: 0;
+}
 .issue:hover {
   background: var(--surface-2);
+}
+/* A suggestion's fix sits under its message, inside the same tinted row. */
+.issue-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+.issue-fix {
+  margin: 4px 0 2px 13px;
+}
+.issues-suggestion-count {
+  gap: 3px;
+  color: var(--label-2);
+}
+.issues-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px 8px;
+}
+.issues-rules {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--label-2);
+  font-size: var(--text-xs);
+}
+.issues-rules[data-hovered],
+.issues-rules[data-pressed] {
+  background: var(--fill-3);
+}
+.issues-rules[data-focus-visible] {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 /* ── Floating dock ─────────────────────────────────────────────────── */
 /*
