@@ -30,6 +30,7 @@ import {
 } from "@/app/lib/schema";
 import { validateSchema } from "@/app/lib/validation";
 import type { ValidationIssue } from "@/app/lib/validation";
+import { applyLintFix, LINT_RULES, lintSchema, type LintFinding } from "@/app/lib/lint";
 import { useLayout } from "@/app/hooks/use-layout";
 import { useSaveState } from "@/app/hooks/use-save-state";
 import { prepareCanvasSchema } from "../geometry";
@@ -100,6 +101,12 @@ export type SchemaContextValue = {
   columnsById: Map<string, { table: Table; column: Column }>;
   issues: ValidationIssue[];
   errors: ValidationIssue[];
+  /** Lint findings: advice, never blocking. From the same deferred schema as `issues`. */
+  suggestions: LintFinding[];
+  /** Applies a finding's fix to the *current* schema, or does nothing if it no longer holds. One undo step. */
+  fixSuggestion: (finding: LintFinding) => void;
+  /** Sets which lint rules are on, for the whole project. One commit, however many rules changed. */
+  setLintRules: (enabled: Iterable<string>) => void;
   ddl: string;
 };
 
@@ -509,6 +516,26 @@ export function SchemaProvider({
     () => issues.filter((issue) => issue.severity === "error"),
     [issues],
   );
+  const suggestions = useMemo(
+    () => lintSchema(deferredSchema),
+    [deferredSchema],
+  );
+  const fixSuggestion = useCallback(
+    (finding: LintFinding) => {
+      const current = schemaRef.current;
+      const next = applyLintFix(current, finding);
+      if (next !== current) commit(next);
+    },
+    [commit],
+  );
+  const setLintRules = useCallback(
+    (enabled: Iterable<string>) => {
+      const on = new Set(enabled);
+      const disabled = LINT_RULES.map((rule) => rule.id).filter((id) => !on.has(id));
+      commitWith((current) => ({ ...current, lint: disabled.length ? { disabled } : undefined }));
+    },
+    [commitWith],
+  );
   /**
    * Generating SQL is the most expensive thing a schema change can trigger, and
    * almost every schema change discards the result: the code panel and the
@@ -557,6 +584,9 @@ export function SchemaProvider({
       columnsById,
       issues,
       errors,
+      suggestions,
+      fixSuggestion,
+      setLintRules,
       ddl,
     }),
     [
@@ -596,6 +626,9 @@ export function SchemaProvider({
       columnsById,
       issues,
       errors,
+      suggestions,
+      fixSuggestion,
+      setLintRules,
       ddl,
     ],
   );
