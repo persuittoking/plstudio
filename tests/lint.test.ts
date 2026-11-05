@@ -108,6 +108,17 @@ describe("applyLintFix", () => {
     expect(applyLintFix(theirs, finding)).toBe(theirs);
   });
 
+  it("does nothing when the entity changed so the fix would differ", () => {
+    const schema = makeEmptySchema();
+    schema.tables = [table("T", [{ name: "ID", type: "NUMBER", size: "", pk: true }, { name: "orderItem" }])];
+    const [finding] = rule(schema, "camel-case-name");
+    const edited = structuredClone(schema);
+    edited.tables[0].columns[1].name = "updatedItem";
+    expect(rule(edited, "camel-case-name")[0].key).toBe(finding.key);
+    expect(applyLintFix(edited, finding)).toBe(edited);
+    expect(fixAll(edited, "camel-case-name").tables[0].columns[1].name).toBe("UPDATED_ITEM");
+  });
+
   it("adds a primary key, reusing an existing ID column", () => {
     const schema = makeEmptySchema();
     schema.tables = [table("A", [{ name: "NAME" }]), table("B", [{ name: "id", type: "NUMBER", size: "" }])];

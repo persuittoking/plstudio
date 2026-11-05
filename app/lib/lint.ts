@@ -261,10 +261,17 @@ const patchTable = (schema: Schema, tableId: string, mutate: (table: Table) => T
 const patchColumn = (table: Table, columnId: string, patch: Partial<Column>): Table =>
   ({ ...table, columns: table.columns.map((column) => (column.id === columnId ? { ...column, ...patch } : column)) });
 
-/** `finding.fix` applied to `schema` -- or `schema` itself when the finding no longer holds there. */
+/**
+ * `finding.fix` applied to `schema` -- or `schema` itself when the finding no
+ * longer holds there *exactly*. The key names only the rule and the entities, so
+ * the fix payload is compared too: a column renamed after the drawer rendered
+ * still has a camelCase finding under the same key, but its rename target moved,
+ * and applying the old one would overwrite the newer edit.
+ */
 export function applyLintFix(schema: Schema, finding: LintFinding): Schema {
   const { fix } = finding;
-  if (!fix || !lintSchema(schema).some((current) => current.key === finding.key)) return schema;
+  const stale = JSON.stringify(fix);
+  if (!fix || !lintSchema(schema).some((current) => current.key === finding.key && JSON.stringify(current.fix) === stale)) return schema;
   switch (fix.kind) {
     case "addIndex":
       return patchTable(schema, fix.tableId, (table) => ({ ...table, indexes: [...(table.indexes ?? []), makeIndex(fix.columnIds)] }));
