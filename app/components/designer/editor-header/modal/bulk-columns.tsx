@@ -18,7 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { findColumns, patchColumns, renameColumns, type BulkColumnPatch, type ColumnRef } from "@/app/lib/bulk-columns";
-import { ORACLE_TYPES, typeString, typeUsesSize, type OracleType } from "@/app/lib/schema";
+import { type OracleType } from "@/app/lib/schema";
+import { choiceOf, choiceTakesSize, dialectOf, PG_TYPE_OPTIONS, typeChoices, typeName } from "@/app/lib/dialect";
 import { useSchema } from "@/app/hooks";
 
 export type BulkColumnsModalProps = {
@@ -35,6 +36,8 @@ type Nullability = typeof KEEP | "required" | "optional";
 
 export function BulkColumnsModal({ isOpen, onOpenChange, readOnly }: BulkColumnsModalProps) {
   const { schema, commit } = useSchema();
+  // A PostgreSQL diagram filters and sets by PostgreSQL's names; each stands for the Oracle type it is stored as.
+  const dialect = dialectOf(schema);
   const [text, setText] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>(ANY);
   const [chosen, setChosen] = useState<Set<string>>(() => new Set());
@@ -49,8 +52,13 @@ export function BulkColumnsModal({ isOpen, onOpenChange, readOnly }: BulkColumns
   const [caseSensitive, setCaseSensitive] = useState(false);
 
   const shown = useMemo(
-    () => findColumns(schema, { text, type: typeFilter === ANY ? undefined : (typeFilter as OracleType) }),
-    [schema, text, typeFilter],
+    () => {
+      const found = findColumns(schema, { text, type: typeFilter === ANY || dialect === "postgres" ? undefined : (typeFilter as OracleType) });
+      if (typeFilter === ANY || dialect !== "postgres") return found;
+      const columns = new Map(schema.tables.flatMap((table) => table.columns.map((column) => [column.id, column] as const)));
+      return found.filter((ref) => choiceOf(columns.get(ref.columnId)!, dialect) === typeFilter);
+    },
+    [dialect, schema, text, typeFilter],
   );
   const rows = useMemo(() => {
     const tables = new Map(schema.tables.map((table) => [table.id, table]));
@@ -67,7 +75,11 @@ export function BulkColumnsModal({ isOpen, onOpenChange, readOnly }: BulkColumns
   );
 
   const patch: BulkColumnPatch = {
-    ...(type !== KEEP && { type: type as OracleType }),
+    ...(type !== KEEP && { type: dialect === "postgres" ? PG_TYPE_OPTIONS.find((option) => option.id === type)!.oracle : (type as OracleType) }),
+    // `bigint` and `uuid` are a type and a fixed size together.
+    ...(type !== KEEP && dialect === "postgres" && PG_TYPE_OPTIONS.find((option) => option.id === type)?.size !== undefined && { size: PG_TYPE_OPTIONS.find((option) => option.id === type)!.size }),
+    // `jsonb` and the other PostgreSQL-only types are remembered beside the Oracle type they are stored as.
+    ...(type !== KEEP && { postgresType: dialect === "postgres" && PG_TYPE_OPTIONS.find((option) => option.id === type)?.extra ? type : undefined }),
     ...(size.trim() && { size: size.trim() }),
     ...(nullability !== KEEP && { notNull: nullability === "required" }),
     ...(defaultValue.trim() && { defaultValue: defaultValue.trim() }),
@@ -106,7 +118,7 @@ export function BulkColumnsModal({ isOpen, onOpenChange, readOnly }: BulkColumns
           <SelectTrigger className="mono w-full"><SelectValue /></SelectTrigger>
           <SelectContent className="code-menu"><SelectGroup>
             <SelectItem id={ANY}>Any type</SelectItem>
-            {ORACLE_TYPES.map((item) => <SelectItem key={item} id={item}>{item}</SelectItem>)}
+            {typeChoices(dialect).map(([id, label]) => <SelectItem key={id} id={id}>{label}</SelectItem>)}
           </SelectGroup></SelectContent>
         </Select>
       </div>
@@ -133,7 +145,7 @@ export function BulkColumnsModal({ isOpen, onOpenChange, readOnly }: BulkColumns
               <span className="text-muted-foreground">{table.name}.</span>
               {column.name}
             </span>
-            <span className="code-menu text-xs text-muted-foreground">{typeString(column)}</span>
+            <span className="code-menu text-xs text-muted-foreground">{typeName(column, dialect)}</span>
             <span className="w-16 text-right text-xs text-muted-foreground">{column.notNull ? "NOT NULL" : "NULL"}</span>
           </div>
         ))}
@@ -150,14 +162,14 @@ export function BulkColumnsModal({ isOpen, onOpenChange, readOnly }: BulkColumns
             <SelectTrigger className="mono w-full"><SelectValue /></SelectTrigger>
             <SelectContent className="code-menu"><SelectGroup>
               <SelectItem id={KEEP}>Keep type</SelectItem>
-              {ORACLE_TYPES.map((item) => <SelectItem key={item} id={item}>{item}</SelectItem>)}
+              {typeChoices(dialect).map(([id, label]) => <SelectItem key={id} id={id}>{label}</SelectItem>)}
             </SelectGroup></SelectContent>
           </Select>
           <Input
             aria-label="New size"
             className="mono"
             placeholder="Keep size"
-            disabled={type !== KEEP && !typeUsesSize(type as OracleType)}
+            disabled={type !== KEEP && !choiceTakesSize(type, dialect)}
             value={size}
             onChange={(event) => setSize(event.target.value)}
           />

@@ -40,7 +40,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ work
           <p className="dashboard-subtitle">{rows.length} {rows.length === 1 ? "diagram" : "diagrams"}</p>
         </div>
         <div className="dashboard-actions">
-          <Link data-slot="button" className={buttonVariants({ variant: "outline" })} href="/editor">Personal Diagram</Link>
+          <NewProjectButton variant="outline">Personal Diagram</NewProjectButton>
           <NewProjectButton workspace={workspace} />
         </div>
       </header>

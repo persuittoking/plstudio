@@ -11,3 +11,4 @@ export { useTransform, useTransformControls } from "./use-transform";
 export { useSaveState } from "./use-save-state";
 export { useSchema } from "./use-schema";
 export { useOverlay } from "./use-overlay";
+export { useDialect } from "@/app/components/designer/context/dialect-context";

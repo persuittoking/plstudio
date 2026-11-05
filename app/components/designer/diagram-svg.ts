@@ -10,7 +10,6 @@ import {
   tableHeaderHeight,
   tableHeight,
   tableWidth,
-  typeString,
   uniqueGroupColumnIds,
   wrapText,
   type MemoColor,
@@ -18,6 +17,7 @@ import {
   type SchemaGroup,
   type Table,
 } from "@/app/lib/schema";
+import { dialectOf, typeName } from "@/app/lib/dialect";
 import { CROW_MANY, CROW_MARKER_SIZE, CROW_ONE, crowMarker, curvePath, edgePath, facingSide, fanPorts, idealBend, routeEdges } from "./edge-routing";
 import { relationshipCardinalities } from "./geometry";
 
@@ -53,8 +53,10 @@ const PADDING = 48;
 /** Rough advances: a 13px sans glyph, and an 11.5px monospace one. */
 const CHAR_WIDTH = 7.4;
 const MONO_WIDTH = 6.9;
-/** Room above the diagram for the title, summary and legend. */
+/** Room above the diagram for the title, summary and legend (the image export). */
 const CHROME_HEIGHT = 64;
+/** Room below the diagram for its key (the Document's figure): one row, or two when the diagram is narrow. */
+const LEGEND_ROW = 40;
 /** A group's name sits above its box, as the heading of its lane. */
 const LANE_TITLE_HEIGHT = 26;
 
@@ -173,8 +175,15 @@ const corner = (px: number) => Math.round(px * (10 / 14) * 10) / 10;
  * canvas's rounded corner, routed past the other cards, exactly as the canvas
  * draws them.
  */
-export function renderDiagramSVG(schema: Schema, { theme = "light", edges: edgeStyle = "curved" }: { theme?: DiagramTheme; edges?: "curved" | "straight" } = {}) {
+/**
+ * `key` places the diagram's title, counts and legend: "top" (the image export)
+ * puts the name, the counts and the legend in a band above the diagram;
+ * "bottom" (the Document's ER figure) leaves the name to the document and draws
+ * the counts and the legend large, under the diagram.
+ */
+export function renderDiagramSVG(schema: Schema, { theme = "light", edges: edgeStyle = "curved", key = "top" }: { theme?: DiagramTheme; edges?: "curved" | "straight"; key?: "top" | "bottom" } = {}) {
   const colors = THEMES[theme];
+  const dialect = dialectOf(schema);
   const canonical = schema.relationships?.length ? schema : normalizeRelationships(schema);
   const layout = reflowDiagram(canonical);
   const tablesById = new Map(canonical.tables.map((table) => [table.id, table]));
@@ -208,39 +217,78 @@ export function renderDiagramSVG(schema: Schema, { theme = "light", edges: edgeS
   const empty = !canonical.tables.length;
   const minX = boxes.length ? Math.min(...boxes.map((box) => box.x)) - PADDING : 0;
   const top = boxes.length ? Math.min(...boxes.map((box) => box.y)) - PADDING : 0;
-  const minY = empty ? top : top - CHROME_HEIGHT;
+  const minY = empty || key === "bottom" ? top : top - CHROME_HEIGHT;
   const width = boxes.length ? Math.max(...boxes.map((box) => box.x + box.width)) + PADDING - minX : PADDING * 2;
-  const height = (boxes.length ? Math.max(...boxes.map((box) => box.y + box.height)) + PADDING : PADDING * 2) - minY;
+  const bottom = boxes.length ? Math.max(...boxes.map((box) => box.y + box.height)) : 0;
 
-  /* Title, summary and legend, in the band above the diagram. */
+  /*
+   * The key for the Document's figure, under the diagram: what the counts are,
+   * what the line ends and the badges mean, large enough to read once the
+   * figure is shrunk onto a page. The name is the document's to say.
+   */
   const relationships = edges.length;
   const summary = [
     `${canonical.tables.length} ${canonical.tables.length === 1 ? "table" : "tables"}`,
     `${relationships} ${relationships === 1 ? "relationship" : "relationships"}`,
     ...(layout.groups.length ? [`${layout.groups.length} ${layout.groups.length === 1 ? "group" : "groups"}`] : []),
   ].join(" · ");
+  // Sized for the page it is shrunk onto: a wide diagram is drawn at about three quarters in a document.
+  const KEY_FONT = 16;
+  const KEY_CHAR = 9;
+  /** A column's badge, as on the cards. */
+  const badge = (x: number, y: number, label: string, [fill, ink]: readonly [string, string]) =>
+    `<rect x="${round(x)}" y="${round(y - 8)}" width="24" height="16" rx="4" fill="${fill}"/><text x="${round(x + 12)}" y="${round(y)}" font-size="9.5" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${ink}" font-family='${MONO}'>${label}</text>`;
+  /** The same badge, larger, for the key. */
+  const keyBadge = (x: number, y: number, label: string, [fill, ink]: readonly [string, string]) =>
+    `<rect x="${round(x)}" y="${round(y - 11)}" width="34" height="22" rx="5" fill="${fill}"/><text x="${round(x + 17)}" y="${round(y)}" font-size="12.5" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${ink}" font-family='${MONO}'>${label}</text>`;
+  const text = (x: number, y: number, value: string, fill: string = colors.text, weight = 400) =>
+    `<text x="${round(x)}" y="${round(y)}" font-size="${KEY_FONT}" font-weight="${weight}" dominant-baseline="central" fill="${fill}">${escapeXml(value)}</text>`;
+  /** Each entry: its width, and how to draw it at a point. */
+  const entries: { width: number; draw: (x: number, y: number) => string }[] = [
+    { width: summary.length * KEY_CHAR, draw: (x, y) => text(x, y, summary, colors.muted, 600) },
+    { width: 80 + "Foreign key (many → one)".length * KEY_CHAR, draw: (x, y) => `<path d="M ${round(x)} ${round(y)} H ${round(x + 64)}" stroke="${colors.edge}" stroke-width="1.8" marker-start="url(#crow-many)" marker-end="url(#crow-one)"/>${text(x + 80, y, "Foreign key (many → one)")}` },
+    ...([["PK", "Primary key", colors.pk], ["FK", "Foreign key", colors.fk], ["UQ", "Unique", colors.uq]] as const).map(([label, name, palette]) => ({
+      width: 44 + name.length * KEY_CHAR, draw: (x: number, y: number) => `${keyBadge(x, y, label, palette)}${text(x + 44, y, name)}`,
+    })),
+    { width: "? nullable".length * KEY_CHAR, draw: (x, y) => text(x, y, "? nullable", colors.muted) },
+  ];
+  const keyLeft = minX + PADDING;
+  const keyRight = minX + width - PADDING;
+  const GAP = 28;
+  const rows: { x: number; entry: (typeof entries)[number] }[][] = [[]];
+  let cursor = keyLeft;
+  for (const entry of entries) {
+    if (cursor > keyLeft && cursor + entry.width > keyRight) { rows.push([]); cursor = keyLeft; }
+    rows[rows.length - 1].push({ x: cursor, entry });
+    cursor += entry.width + GAP;
+  }
+  const keyTop = bottom + 12;
+  const height = (empty ? PADDING * 2 : key === "bottom" ? keyTop + rows.length * LEGEND_ROW + PADDING - 8 : bottom + PADDING) - minY;
+
+  /* The image export's band above the diagram: title and counts on the left, the legend on the right. */
   const chromeX = minX + PADDING;
   const chromeY = minY + PADDING;
   const legendX = Math.max(chromeX + 380, minX + width - PADDING - 420);
-  const badge = (x: number, y: number, label: string, [fill, ink]: readonly [string, string]) =>
-    `<rect x="${round(x)}" y="${round(y - 8)}" width="24" height="16" rx="4" fill="${fill}"/><text x="${round(x + 12)}" y="${round(y)}" font-size="9.5" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${ink}" font-family='${MONO}'>${label}</text>`;
-  const chrome = empty
-    ? []
-    : [
-        `<text x="${round(chromeX)}" y="${round(chromeY + 4)}" font-size="22" font-weight="700" letter-spacing="-0.4" fill="${colors.text}">${escapeXml(fit(canonical.name, legendX - chromeX - 24, 12))}</text>`,
-        `<text x="${round(chromeX)}" y="${round(chromeY + 26)}" font-size="12" fill="${colors.muted}">${escapeXml(summary)}</text>`,
-        `<g font-size="11.5" fill="${colors.text}">`,
-        `<path d="M ${round(legendX)} ${round(chromeY - 4)} H ${round(legendX + 64)}" stroke="${colors.edge}" stroke-width="1.5" marker-start="url(#crow-many)" marker-end="url(#crow-one)"/>`,
-        `<text x="${round(legendX + 76)}" y="${round(chromeY - 4)}" dominant-baseline="central">Foreign key (many → one)</text>`,
-        badge(legendX + 250, chromeY - 4, "PK", colors.pk),
-        `<text x="${round(legendX + 282)}" y="${round(chromeY - 4)}" dominant-baseline="central">Primary key</text>`,
-        badge(legendX + 250, chromeY + 18, "FK", colors.fk),
-        `<text x="${round(legendX + 282)}" y="${round(chromeY + 18)}" dominant-baseline="central">Foreign key</text>`,
-        badge(legendX + 360, chromeY - 4, "UQ", colors.uq),
-        `<text x="${round(legendX + 392)}" y="${round(chromeY - 4)}" dominant-baseline="central">Unique</text>`,
-        `<text x="${round(legendX + 76)}" y="${round(chromeY + 18)}" dominant-baseline="central" fill="${colors.muted}">? nullable</text>`,
-        `</g>`,
-      ];
+  const topChrome = [
+    `<text x="${round(chromeX)}" y="${round(chromeY + 4)}" font-size="22" font-weight="700" letter-spacing="-0.4" fill="${colors.text}">${escapeXml(fit(canonical.name, legendX - chromeX - 24, 12))}</text>`,
+    `<text x="${round(chromeX)}" y="${round(chromeY + 26)}" font-size="12" fill="${colors.muted}">${escapeXml(summary)}</text>`,
+    `<g font-size="11.5" fill="${colors.text}">`,
+    `<path d="M ${round(legendX)} ${round(chromeY - 4)} H ${round(legendX + 64)}" stroke="${colors.edge}" stroke-width="1.5" marker-start="url(#crow-many)" marker-end="url(#crow-one)"/>`,
+    `<text x="${round(legendX + 76)}" y="${round(chromeY - 4)}" dominant-baseline="central">Foreign key (many → one)</text>`,
+    badge(legendX + 250, chromeY - 4, "PK", colors.pk),
+    `<text x="${round(legendX + 282)}" y="${round(chromeY - 4)}" dominant-baseline="central">Primary key</text>`,
+    badge(legendX + 250, chromeY + 18, "FK", colors.fk),
+    `<text x="${round(legendX + 282)}" y="${round(chromeY + 18)}" dominant-baseline="central">Foreign key</text>`,
+    badge(legendX + 360, chromeY - 4, "UQ", colors.uq),
+    `<text x="${round(legendX + 392)}" y="${round(chromeY - 4)}" dominant-baseline="central">Unique</text>`,
+    `<text x="${round(legendX + 76)}" y="${round(chromeY + 18)}" dominant-baseline="central" fill="${colors.muted}">? nullable</text>`,
+    `</g>`,
+  ];
+  const bottomChrome = [
+    `<path d="M ${round(keyLeft)} ${round(keyTop - 4)} H ${round(keyRight)}" stroke="${colors.rule}" stroke-width="1"/>`,
+    ...rows.flatMap((row, index) => row.map(({ x, entry }) => entry.draw(x, keyTop + 18 + index * LEGEND_ROW))),
+  ];
+  const chrome = empty ? [] : key === "bottom" ? bottomChrome : topChrome;
 
   const groups = layout.groups.map((group) => {
     const palette = GROUP_PALETTE[group.color];
@@ -293,7 +341,7 @@ export function renderDiagramSVG(schema: Schema, { theme = "light", edges: edgeS
       const top = y + headerHeight + row * TABLE_FIELD_HEIGHT;
       const middle = top + TABLE_FIELD_HEIGHT / 2;
       const kind = column.pk ? "pk" : column.fk ? "fk" : column.unique || composite.has(column.id) ? "uq" : null;
-      const type = typeString(column).toLowerCase();
+      const type = typeName(column, dialect).toLowerCase();
       const nameX = x + 40;
       const nameRoom = cardWidth - 40 - 12 - type.length * MONO_WIDTH - 8;
       return [

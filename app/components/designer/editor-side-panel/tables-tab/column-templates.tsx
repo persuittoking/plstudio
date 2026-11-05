@@ -9,6 +9,8 @@
  * collaborator and travel with a JSON export like any other edit.
  */
 
+import { useDialect } from "@/app/components/designer/context/dialect-context";
+import { typeName } from "@/app/lib/dialect";
 import { memo, useState } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { LayoutTemplateIcon, SaveIcon, Trash2Icon } from "lucide-react";
@@ -27,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { BUILTIN_COLUMN_TEMPLATES, makeColumnTemplate, typeString, type ColumnTemplate, type Table } from "@/app/lib/schema";
+import { BUILTIN_COLUMN_TEMPLATES, makeColumnTemplate, type ColumnTemplate, type Table } from "@/app/lib/schema";
 
 export type ColumnTemplatesMenuProps = {
   table: Table;
@@ -102,6 +104,7 @@ export const ColumnTemplatesMenu = memo(function ColumnTemplatesMenu({
 });
 
 function SaveTemplateDialog({ table, onClose, onSave }: { table: Table; onClose: () => void; onSave: (template: ColumnTemplate) => void }) {
+  const dialect = useDialect();
   const [name, setName] = useState("");
   // The key is the table's own business; what usually repeats is everything after it.
   const [chosen, setChosen] = useState(() => new Set(table.columns.filter((column) => !column.pk).map((column) => column.id)));
@@ -138,7 +141,7 @@ function SaveTemplateDialog({ table, onClose, onSave }: { table: Table; onClose:
             <div key={column.id} className="flex items-center gap-2">
               <Checkbox aria-label={column.name} isSelected={chosen.has(column.id)} onChange={(on) => toggle(column.id, on)} />
               <span className="code-menu">{column.name}</span>
-              <span className="text-xs text-muted-foreground">{typeString(column)}</span>
+              <span className="text-xs text-muted-foreground">{typeName(column, dialect)}</span>
             </div>
           ))}
         </div>

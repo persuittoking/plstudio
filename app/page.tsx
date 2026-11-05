@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import PendingInvitations from "@/app/components/pending-invitations";
 import ProjectCard from "@/app/components/project-card";
+import NewProjectButton from "@/app/components/new-project-button";
 import SchemaPreview from "@/app/components/schema-preview";
 import WorkspaceTopbar from "@/app/components/workspace-topbar";
 import { formatRelative, formatTimestamp } from "@/app/lib/format";
@@ -49,7 +50,7 @@ export default async function Page() {
           </p>
         </div>
         <div className="dashboard-actions">
-          <Link data-slot="button" className={buttonVariants()} href="/editor"><PlusIcon data-icon="inline-start" />New Diagram</Link>
+          <NewProjectButton><PlusIcon data-icon="inline-start" />New Diagram</NewProjectButton>
           <Link data-slot="button" className={buttonVariants({ variant: "outline" })} href="/onboarding">New Workspace</Link>
         </div>
       </header>
@@ -98,7 +99,7 @@ export default async function Page() {
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Link data-slot="button" className={buttonVariants()} href="/editor">Open a blank editor</Link>
+            <NewProjectButton>Open a blank editor</NewProjectButton>
           </EmptyContent>
         </Empty>
       )}

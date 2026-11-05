@@ -1,5 +1,6 @@
 "use client";
 
+import { dialectOf, toPostgresColumn } from "@/app/lib/dialect";
 import {
   useCallback,
   useEffect,
@@ -658,12 +659,16 @@ export function useCanvasGestures({ readOnly }: { readOnly: boolean }) {
           schema.tables.find((table) => table.id === selectedId)?.schemaId),
     );
     const index = schema.tables.length;
-    const base = makeTable(
+    const made = makeTable(
       prefixTableName(`TABLE_${index + 1}`, groupPrefix(target)),
       at?.x ?? 90 + (index % 4) * 70,
       at?.y ?? 100 + (index % 3) * 75,
       index,
     );
+    // A PostgreSQL diagram's new table starts as PostgreSQL would have it: a bigint identity key.
+    const base = dialectOf(schema) === "postgres"
+      ? { ...made, keyStrategy: "identity" as const, columns: made.columns.map((column) => toPostgresColumn(column)) }
+      : made;
     const table = target
       ? {
           ...base,

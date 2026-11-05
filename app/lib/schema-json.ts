@@ -47,6 +47,7 @@ export function exportSchemaJson(schema: Schema, exportedAt = new Date().toISOSt
         queries: schema.queries ?? [],
         columnTemplates: schema.columnTemplates ?? [],
         documentation: schema.documentation ?? "",
+        dialect: schema.dialect ?? "oracle",
       },
     } satisfies SchemaExport,
     null,
@@ -87,6 +88,7 @@ function readColumn(value: unknown, table: string, index: number, warnings: stri
     check: str(raw.check),
     comment: typeof raw.comment === "string" ? raw.comment : undefined,
     fk: readForeignKey(raw.fk),
+    ...(typeof raw.postgresType === "string" && raw.postgresType ? { postgresType: raw.postgresType } : {}),
   });
 }
 
@@ -216,6 +218,7 @@ export function parseSchemaJson(text: string): ParseResult {
     queries: normalizeQueries(rawSchema.queries),
     columnTemplates: normalizeColumnTemplates(rawSchema.columnTemplates),
     ...(str(rawSchema.documentation) ? { documentation: str(rawSchema.documentation) } : {}),
+    ...(rawSchema.dialect === "postgres" ? { dialect: "postgres" as const } : {}),
   };
   /*
    * `prepareCanvasSchema`'s pipeline minus `repairInitialLayout`: that one

@@ -20,7 +20,7 @@ export type BadgeTone = "" | "good" | "bad";
 /* ------------------------------------------------------------ inline */
 
 /** Highlight and word colours are a sign or a colour code after the opening marks (`app/lib/doc-colors.ts`). */
-const INLINE = new RegExp(String.raw`\[\[([+-]?)([^\]]+)\]\]|\*\*([^*]+)\*\*|(?<![*\w])\*([^*\s][^*]*?)\*(?![*\w])|==(${TONE_PATTERN})?([^=]+)==|!!(${TONE_PATTERN})?([^!]+)!!`, "g");
+const INLINE = new RegExp(String.raw`\[\[([+-]|\{#[0-9a-fA-F]{6}\})?([^\]]+)\]\]|\*\*([^*]+)\*\*|(?<![*\w])\*([^*\s][^*]*?)\*(?![*\w])|==(${TONE_PATTERN})?([^=]+)==|!!(${TONE_PATTERN})?([^!]+)!!`, "g");
 const text = (value: string, marks: Mark[] = []): JSONContent => (marks.length ? { type: "text", text: value, marks } : { type: "text", text: value });
 
 /** The words inside a mark, read for marks of their own, with `mark` added to each. */
@@ -35,7 +35,7 @@ export function inlineNodes(source: string): JSONContent[] {
     let last = 0;
     for (const match of part.matchAll(INLINE)) {
       if (match.index > last) nodes.push(text(part.slice(last, match.index)));
-      if (match[2] !== undefined) nodes.push(text(match[2], [{ type: "badge", attrs: { tone: match[1] === "+" ? "good" : match[1] === "-" ? "bad" : "" } }]));
+      if (match[2] !== undefined) nodes.push(text(match[2], [{ type: "badge", attrs: { tone: match[1] === "+" ? "good" : match[1] === "-" ? "bad" : match[1]?.startsWith("{") ? match[1].slice(1, -1).toLowerCase() : "" } }]));
       else if (match[3] !== undefined) nodes.push(...inlineNodes(match[3]).map((node) => ({ ...node, marks: [...(node.marks ?? []), { type: "bold" }] })));
       else if (match[4] !== undefined) nodes.push(text(match[4], [{ type: "italic" }]));
       else if (match[6] !== undefined) nodes.push(...withMark(match[6], { type: "highlight", attrs: { color: colorOfTone(match[5]) } }));
@@ -57,7 +57,8 @@ export function inlineText(nodes: JSONContent[] = []): string {
     if (!value) return "";
     if (has(node, "code")) return `\`${value.replace(/`/g, "'")}\``;
     const badge = node.marks?.find((mark) => mark.type === "badge");
-    if (badge) value = `[[${badge.attrs?.tone === "good" ? "+" : badge.attrs?.tone === "bad" ? "-" : ""}${value.replace(/[[\]]/g, "")}]]`;
+    const tone = String(badge?.attrs?.tone ?? "");
+    if (badge) value = `[[${tone === "good" ? "+" : tone === "bad" ? "-" : /^#[0-9a-f]{6}$/i.test(tone) ? `{${tone.toLowerCase()}}` : ""}${value.replace(/[[\]]/g, "")}]]`;
     const color = node.marks?.find((mark) => mark.type === "textColor");
     if (color) value = `!!${toneOfColor(String(color.attrs?.color ?? "yellow"))}${value.replace(/!/g, "")}!!`;
     const highlight = node.marks?.find((mark) => mark.type === "highlight");
@@ -81,7 +82,7 @@ const toNode = (block: DocBlock): JSONContent => {
     case "kicker": return { type: "kicker", content: inlineNodes(block.text) };
     case "heading": return { type: "heading", attrs: { level: block.level }, content: inlineNodes(block.text) };
     case "paragraph": return paragraph(block.text);
-    case "note": return { type: "note", content: inlineNodes(block.text) };
+    case "note": return { type: "note", attrs: { color: block.color || null }, content: inlineNodes(block.text) };
     case "callout": return { type: "callout", attrs: { tone: block.tone }, content: inlineNodes(block.text) };
     case "list": return {
       type: block.ordered ? "orderedList" : "bulletList",
@@ -140,7 +141,7 @@ function toBlockText(node: JSONContent): string {
     case "kicker": return inline.trim() ? `^ ${inline}` : "";
     case "heading": return inline.trim() ? `${"#".repeat(Number(node.attrs?.level ?? 2))} ${inline}` : "";
     case "paragraph": return guard(inline.trim());
-    case "note": return inline.trim() ? `> ${inline}` : "";
+    case "note": return inline.trim() ? `>${node.attrs?.color ? `{${String(node.attrs.color).toLowerCase()}}` : ""} ${inline}` : "";
     case "callout": return inline.trim() ? `!>${CALLOUT_SIGN[(node.attrs?.tone ?? "") as CalloutTone] ?? ""} ${inline}` : "";
     case "bulletList": case "orderedList": return (node.content ?? [])
       .map((item) => (item.content ?? []).map((child) => inlineText(child.content)).join(" ").trim())

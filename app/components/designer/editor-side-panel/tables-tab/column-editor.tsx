@@ -13,16 +13,14 @@ import { memo, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from
 import { ChevronRightIcon, FingerprintIcon, GripVerticalIcon, KeyRoundIcon, LinkIcon, TargetIcon, Trash2Icon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ORACLE_TYPES, type Column, type Table, typeUsesSize, typeSizePlaceholder } from "@/app/lib/schema";
+import { type Column, type Table, typeSizePlaceholder } from "@/app/lib/schema";
+import { choiceOf, choicePatch, choicePlaceholder, choiceTakesSize, typeChoiceGroups, typeName } from "@/app/lib/dialect";
+import { useDialect } from "@/app/components/designer/context/dialect-context";
 
 const NO_REFERENCE = "__no_reference__";
 type ForeignKeyTarget = { table: Table; target: Column };
-
-/** `VARCHAR2(100)`, `NUMBER(10,2)`, or the bare type when it takes no size. */
-const typeLabel = (column: Column) =>
-  typeUsesSize(column.type) && column.size.trim() ? `${column.type}(${column.size.trim()})` : column.type;
 
 export const ColumnEditor = memo(function ColumnEditor({
   table,
@@ -55,6 +53,9 @@ export const ColumnEditor = memo(function ColumnEditor({
   onGrabKeyDown?: (event: KeyboardEvent<HTMLButtonElement>, columnId: string) => void;
 }) {
   const patch = (changes: Partial<Column>) => patchColumn(table.id, column.id, changes);
+  // `VARCHAR2(100)` in an Oracle diagram, `varchar(100)` in a PostgreSQL one; the picker offers that database's types.
+  const dialect = useDialect();
+  const choice = choiceOf(column, dialect);
   const detailId = `column-detail-${column.id}`;
   const name = column.name.toUpperCase() || "Untitled";
   const flags = new Set([column.pk && "pk", !column.notNull && "null", column.unique && "unique"].filter(Boolean) as string[]);
@@ -82,7 +83,7 @@ export const ColumnEditor = memo(function ColumnEditor({
           onClick={() => onToggle(column.id)}
         >
           <span className="column-row-name">{name}</span>
-          <span className="column-row-type">{typeLabel(column)}</span>
+          <span className="column-row-type">{typeName(column, dialect)}</span>
           <span className="column-row-flags">
             {column.pk && <KeyRoundIcon size={13} className="pk" aria-label="Primary key" />}
             {column.fk && <LinkIcon size={13} aria-label="Foreign key" />}
@@ -105,19 +106,24 @@ export const ColumnEditor = memo(function ColumnEditor({
                 className="inset-row-value"
                 aria-label={`Datatype for ${column.name}`}
                 isDisabled={readOnly}
-                selectedKey={column.type}
-                onSelectionChange={(key) => patch({ type: key as Column["type"] })}
+                selectedKey={choice}
+                onSelectionChange={(key) => patch(choicePatch(String(key), column, dialect))}
               >
                 <SelectTrigger className="inset-field mono"><SelectValue /></SelectTrigger>
-                <SelectContent className="code-menu"><SelectGroup>
-                  {ORACLE_TYPES.map((type) => <SelectItem key={type} id={type}>{type}</SelectItem>)}
-                </SelectGroup></SelectContent>
+                <SelectContent className="code-menu">
+                  {typeChoiceGroups(dialect).map((group) => (
+                    <SelectGroup key={group.label || "types"}>
+                      {group.label && <SelectLabel>{group.label}</SelectLabel>}
+                      {group.choices.map(([id, label]) => <SelectItem key={id} id={id}>{label}</SelectItem>)}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
               </Select>
             </div>
-            {typeUsesSize(column.type) && (
+            {choiceTakesSize(choice, dialect) && (
               <label className="inset-row">
                 <span className="inset-row-label">Size</span>
-                <Input className="inset-field mono" disabled={readOnly} placeholder={typeSizePlaceholder(column.type)} value={column.size} onChange={(event) => patch({ size: event.target.value })} />
+                <Input className="inset-field mono" disabled={readOnly} placeholder={choicePlaceholder(choice, dialect, typeSizePlaceholder)} value={column.size} onChange={(event) => patch({ size: event.target.value })} />
               </label>
             )}
             <div className="inset-row">

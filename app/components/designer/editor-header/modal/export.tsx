@@ -10,17 +10,18 @@ import { exportSchemaJson, parseSchemaJson } from "@/app/lib/schema-json";
 import { documentTemplate } from "@/app/lib/documentation";
 import { renderDiagramSVG, type DiagramTheme } from "../../diagram-svg";
 import { DocumentTab } from "./document-tab";
+import { generatePostgres } from "@/app/lib/postgres";
 import { svgToPng } from "./svg-to-png";
 import type { Schema } from "@/app/lib/schema";
 import type { ValidationIssue } from "@/app/lib/validation";
-import { Alert, AlertAction, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { highlightJson, highlightMermaid, highlightSql } from "../../highlight";
 
-export type ExportTab = "ddl" | "dml" | "migration" | "mermaid" | "json" | "image" | "document";
+export type ExportTab = "ddl" | "postgres" | "dml" | "migration" | "mermaid" | "json" | "image" | "document";
 
 /**
  * What a migration is generated *from*: the database as it stands, which the
@@ -31,6 +32,7 @@ export type MigrationBaseline = { schema: Schema; label: string; warnings: strin
 
 const exportTabs = [
   ["ddl", "DDL"],
+  ["postgres", "PostgreSQL"],
   ["dml", "DML"],
   ["migration", "Migration"],
   ["mermaid", "Mermaid"],
@@ -81,6 +83,17 @@ export const ExportModal = ({
     () => (isOpen && exportTab === "ddl" ? generateDDL(schema) : ""),
     [exportTab, isOpen, schema],
   );
+  const postgresResult = useMemo(
+    () => (isOpen && exportTab === "postgres" ? generatePostgres(schema) : null),
+    [exportTab, isOpen, schema],
+  );
+  const postgres = postgresResult?.sql ?? "";
+  /*
+   * What PostgreSQL would refuse or read differently, each with its fix -- the
+   * PostgreSQL tab's version of the Oracle tab's "Export blocked" alert. The
+   * script is still written (the offending line as a comment), so it warns rather than blocks.
+   */
+  const postgresProblems = (postgresResult?.notes ?? []).filter((note) => note.level === "warning");
   const dml = useMemo(
     () => (isOpen && exportTab === "dml" ? generateDML(schema) : ""),
     [exportTab, isOpen, schema],
@@ -98,10 +111,11 @@ export const ExportModal = ({
     [baseline, exportTab, isOpen, schema],
   );
   const svg = useMemo(
-    () => (isOpen && exportTab === "image" ? renderDiagramSVG(schema, { theme: imageTheme }) : ""),
+    () => (isOpen && exportTab === "image" ? renderDiagramSVG(schema, { theme: imageTheme, edges: "straight" }) : ""),
     [exportTab, imageTheme, isOpen, schema],
   );
   const isDocument = exportTab === "document";
+  const isPostgres = exportTab === "postgres";
   const isJson = exportTab === "json";
   const isMigration = exportTab === "migration";
   const isImage = exportTab === "image";
@@ -109,6 +123,8 @@ export const ExportModal = ({
   const output =
     exportTab === "ddl"
       ? ddl
+      : isPostgres
+        ? postgres
       : exportTab === "dml"
         ? dml
         : exportTab === "mermaid"
@@ -171,6 +187,8 @@ export const ExportModal = ({
               ? `${fileSlug(schema.name)}.svg`
               : isDocument
                 ? `${fileSlug(schema.name)}-document.md`
+              : isPostgres
+                ? `${fileSlug(schema.name)}-postgres.sql`
               : exportTab === "dml"
                 ? "dml.sql"
                 : "schema.sql",
@@ -217,7 +235,8 @@ export const ExportModal = ({
           </div>
         </div>
         {/* A JSON or Mermaid export is a snapshot of the diagram, not generated Oracle SQL, so an Oracle DDL error does not block it. */}
-        {errors.length > 0 && !isJson && !isMermaid && !isImage && !isDocument && (
+        {/* The PostgreSQL tab reviews its own problems: what blocks the Oracle DDL (a key into part of a composite key, say) it writes as a comment and explains. */}
+        {errors.length > 0 && !isJson && !isMermaid && !isImage && !isDocument && !isPostgres && (
           <Alert variant="destructive" className="mt-4">
             <XIcon/>
             <AlertTitle>
@@ -228,6 +247,32 @@ export const ExportModal = ({
                 Clear invalid references
               </Button>
             </AlertAction>
+          </Alert>
+        )}
+        {isPostgres && postgresProblems.length > 0 && (
+          <Alert variant="destructive" className="mt-4">
+            <XIcon/>
+            <AlertTitle>
+              Fix before running in PostgreSQL: {postgresProblems.length} problem{postgresProblems.length === 1 ? "" : "s"}
+            </AlertTitle>
+            <AlertDescription>
+              <ul className="mt-1 list-disc space-y-1 pl-5">
+                {postgresProblems.map((problem, index) => (
+                  <li key={index}>
+                    {problem.table && <span className="font-medium text-foreground">{problem.table}: </span>}
+                    {problem.message}
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+            {/* The same one-click fix as the Oracle tab, for the problem it fixes: a reference to a key that cannot take it. */}
+            {errors.length > 0 && postgresProblems.some((problem) => / points at /.test(problem.message)) && (
+              <AlertAction>
+                <Button variant="outline" onClick={onClearInvalidForeignKeys}>
+                  Clear invalid references
+                </Button>
+              </AlertAction>
+            )}
           </Alert>
         )}
         <TabsContent id="migration">

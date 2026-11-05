@@ -1,5 +1,6 @@
 import { SHORTCUTS, type ShortcutId } from "./shortcuts";
-import { BUILTIN_COLUMN_TEMPLATES, typeString, type Schema } from "./schema";
+import { dialectOf, typeName } from "./dialect";
+import { BUILTIN_COLUMN_TEMPLATES, type Schema } from "./schema";
 
 /**
  * What the ⌘K palette offers, and in what order. Commands come straight from
@@ -33,7 +34,7 @@ export function paletteItems(schema: Schema, { readOnly, selectedTableId }: { re
     : [];
   const tables = schema.tables.map((table): PaletteItem => ({ kind: "table", id: `table:${table.id}`, label: table.name, detail: `${table.columns.length} columns`, tableId: table.id }));
   const columns = schema.tables.flatMap((table) =>
-    table.columns.map((column): PaletteItem => ({ kind: "column", id: `column:${column.id}`, label: `${table.name}.${column.name}`, detail: typeString(column), tableId: table.id, columnId: column.id })),
+    table.columns.map((column): PaletteItem => ({ kind: "column", id: `column:${column.id}`, label: `${table.name}.${column.name}`, detail: typeName(column, dialectOf(schema)), tableId: table.id, columnId: column.id })),
   );
   return [...commands, ...templates, ...tables, ...columns];
 }

@@ -47,7 +47,7 @@ describe("renderDocument", () => {
   it("fills a table's columns from the schema", () => {
     const body = render("{{columns CORE_GRID_ACTIONS}}");
     ["USTUN", "Ustun", "Tur", "Qoida", "Vazifasi"].slice(1).forEach((header) => expect(body).toContain(`<th>${header}</th>`));
-    expect(body).toContain("PK, FK <code>CORE_GRIDS(GRID_CODE)</code> on delete cascade");
+    expect(body).toMatch(/PK, FK <code class="table-ref" style="--table:#[0-9a-f]{6}">CORE_GRIDS\(GRID_CODE\)<\/code> on delete cascade/);
     expect(body).toContain("default <code>10</code>");
     expect(body).toContain("Qaysi grid");
   });
@@ -132,7 +132,7 @@ describe("languages", () => {
   it("drafts the template in each language", async () => {
     const { pageStrings } = await import("@/app/lib/document-i18n");
     expect(documentTemplate(schema(), "ru")).toContain("## ER-диаграмма");
-    expect(documentTemplate(schema(), "en")).toContain("### `CORE_GRIDS` columns");
+    expect(documentTemplate(schema(), "en")).toMatch(/### \*\*==\{#[0-9a-f]{6}\}CORE_GRIDS==\*\* columns/);
     expect(pageStrings("ru").columnsHeading("T")).toBe("Столбцы `T`");
   });
 });
@@ -146,7 +146,7 @@ describe("highlights and callouts", () => {
     expect(inline("==!!-x!!==")).toBe(`<mark class="hl yellow"><span class="tc pink">x</span></mark>`);
   });
   it("reads !> as a callout, not a note", () => {
-    expect(parseDocument("!> **Eng muhimi:** bitta fikr\n\n> izoh")).toEqual([{ type: "callout", tone: "", text: "**Eng muhimi:** bitta fikr" }, { type: "note", text: "izoh" }]);
+    expect(parseDocument("!> **Eng muhimi:** bitta fikr\n\n> izoh")).toEqual([{ type: "callout", tone: "", text: "**Eng muhimi:** bitta fikr" }, { type: "note", color: "", text: "izoh" }]);
     expect(render("!> Muhim")).toContain(`<p class="callout">Muhim</p>`);
   });
 });
@@ -208,5 +208,27 @@ describe("callout kinds", () => {
     const { fromTiptap, toTiptap } = await import("@/app/lib/document-tiptap");
     const text = "!>+ Maslahat\n\n!>! Diqqat\n\n!>- Xavf\n\n!> Oddiy";
     expect(fromTiptap(toTiptap(text)).trim()).toBe(text);
+  });
+});
+
+describe("note colours", () => {
+  it("reads a colour code after >, and keeps the default without one", async () => {
+    expect(parseDocument(">{#16A34A} yashil\n\n> oddiy")).toEqual([{ type: "note", color: "#16a34a", text: "yashil" }, { type: "note", color: "", text: "oddiy" }]);
+    expect(render(">{#16a34a} yashil")).toContain(`<p class="note" style="--note:#16a34a">yashil</p>`);
+    expect(render("> oddiy")).toContain(`<p class="note">oddiy</p>`);
+    const { fromTiptap, toTiptap } = await import("@/app/lib/document-tiptap");
+    expect(fromTiptap(toTiptap(">{#16a34a} yashil\n\n> oddiy")).trim()).toBe(">{#16a34a} yashil\n\n> oddiy");
+  });
+});
+
+describe("table colours", () => {
+  it("draws a table named in code in its card's colour, and stripes its column table", () => {
+    const input = schema();
+    const color = input.tables.find((table) => table.name === "CORE_GRIDS")!.color.a.toLowerCase();
+    const body = render("### `CORE_GRIDS` ustunlari\n\n`core_grids`, `NOT_A_TABLE`\n\n{{columns CORE_GRIDS}}", input);
+    expect(body).toContain(`<h3><code class="table-ref" style="--table:${color}">CORE_GRIDS</code> ustunlari</h3>`);
+    expect(body).toContain(`<code class="table-ref" style="--table:${color}">core_grids</code>`);
+    expect(body).toContain("<code>NOT_A_TABLE</code>");
+    expect(body).toContain(`<div class="table columns" style="--table:${color}">`);
   });
 });

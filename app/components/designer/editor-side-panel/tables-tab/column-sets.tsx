@@ -10,12 +10,14 @@
  * an id nothing answers to.
  */
 
+import { useDialect } from "@/app/components/designer/context/dialect-context";
+import { typeName } from "@/app/lib/dialect";
 import { memo } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { CircleXIcon, PlusIcon, Trash2Icon, type LucideIcon } from "lucide-react";
 import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { typeString, type Table, type TableIndex, type UniqueConstraint } from "@/app/lib/schema";
+import { type Table, type TableIndex, type UniqueConstraint } from "@/app/lib/schema";
 
 type ColumnSet = UniqueConstraint | TableIndex;
 
@@ -49,6 +51,7 @@ export const ColumnSets = memo(function ColumnSets({
   onPatch,
   onDelete,
 }: ColumnSetsProps) {
+  const dialect = useDialect();
   const Icon = icon;
   const columnName = (columnId: string) => table.columns.find((column) => column.id === columnId)?.name.toUpperCase() ?? columnId;
   if (readOnly && !sets.length) return null;
@@ -124,7 +127,7 @@ export const ColumnSets = memo(function ColumnSets({
                           onAction={() => onPatch(table.id, set.id, { columnIds: [...set.columnIds, column.id] })}
                         >
                           <span className="unique-add-name">{column.name.toUpperCase()}</span>
-                          <span className="unique-add-type">{typeString(column)}</span>
+                          <span className="unique-add-type">{typeName(column, dialect)}</span>
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenu>

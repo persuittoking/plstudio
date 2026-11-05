@@ -64,6 +64,13 @@ export function ControlPanel({
               }));
             }}
           />
+          {/* Which database the diagram is for; switched from the File menu. */}
+          <span
+            className="ml-1 shrink-0 rounded-md bg-(--fill-4) px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+            title="The database this diagram is designed for. Switch it from the File menu."
+          >
+            {schema.dialect === "postgres" ? "PostgreSQL" : "Oracle"}
+          </span>
       </div>
       <span className="appbar-divider" aria-hidden="true" />
       <Menubar

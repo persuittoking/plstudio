@@ -48,9 +48,10 @@ export function DocumentTab({
   save: (blob: Blob, name: string) => void;
   onDocumentationChange: (text: string) => void;
 }) {
-  // The page follows the app's own appearance (System/Light/Dark in the account menu), exports included.
+  // The page starts in the app's own appearance (System/Light/Dark in the account menu); the switch changes it, exports included.
   const { resolvedTheme } = useTheme();
-  const theme: DocumentTheme = resolvedTheme === "dark" ? "dark" : "light";
+  const [chosenTheme, setChosenTheme] = useState<DocumentTheme | null>(null);
+  const theme: DocumentTheme = chosenTheme ?? (resolvedTheme === "dark" ? "dark" : "light");
   const [draft, setDraft] = useState(schema.documentation ?? "");
   // A diagram with no document yet opens on one written from its tables. It is not saved until it is
   // edited, so until then it follows the diagram: add a table and its section appears.
@@ -139,6 +140,20 @@ export function DocumentTab({
     <div className="mt-4 flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
+          <ToggleGroup
+            className="segmented"
+            aria-label="Document theme"
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={[theme]}
+            onSelectionChange={(keys) => {
+              const [key] = [...keys];
+              if (key) setChosenTheme(key as DocumentTheme);
+            }}
+          >
+            <ToggleGroupItem id="light">Light</ToggleGroupItem>
+            <ToggleGroupItem id="dark">Dark</ToggleGroupItem>
+          </ToggleGroup>
           <ToggleGroup
             className="segmented"
             aria-label="Document language"

@@ -1,12 +1,13 @@
 import {
+  currentTableColor,
   normalizeIdentifier,
   normalizeRelationships,
-  typeString,
   type Column,
   type RelationshipConstraint,
   type Schema,
   type Table,
 } from "@/app/lib/schema";
+import { dialectOf, typeName } from "./dialect";
 import { renderDiagramSVG } from "@/app/components/designer/diagram-svg";
 import { LANGUAGE_LABELS, highlightCode } from "@/app/lib/code-highlight";
 import { draftDocument } from "@/app/lib/document-draft";
@@ -19,7 +20,8 @@ import { DEFAULT_LANG, documentLanguage, pageStrings, versionText, type DocLang 
  * lists, tables, code -- plus a few blocks of its own:
  *
  *     ^ CMS · dynamic grid          a small line above the title
- *     > text                        a quieter note paragraph
+ *     > text                        a note, in the default note colour;
+ *     >{#hex} text                  …or in that colour
  *     !> text                       a callout: the point to remember (blue);
  *     !>+ / !>! / !>- text          …a tip (green), a warning (amber), a danger (red)
  *     ==word== ==+w== ==~w== ==-w== highlighted words: yellow, green, blue, pink
@@ -54,7 +56,7 @@ export type DocBlock =
   | { type: "kicker"; text: string }
   | { type: "heading"; level: 1 | 2 | 3; text: string }
   | { type: "paragraph"; text: string }
-  | { type: "note"; text: string }
+  | { type: "note"; color: string; text: string }
   | { type: "callout"; tone: CalloutTone; text: string }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "table"; headers: string[]; rows: string[][] }
@@ -134,9 +136,11 @@ export function parseDocument(source: string): DocBlock[] {
     }
 
     if (trimmed.startsWith(">")) {
+      // `>{#6366f1} text` is a note in that colour; a bare `>` is the default one.
+      const color = trimmed.match(/^>\{(#[0-9a-fA-F]{6})\}/)?.[1].toLowerCase() ?? "";
       const body: string[] = [];
-      while (index < lines.length && lines[index].trim().startsWith(">")) body.push(lines[index++].trim().replace(/^>\s?/, ""));
-      blocks.push({ type: "note", text: body.join(" ") });
+      while (index < lines.length && lines[index].trim().startsWith(">")) body.push(lines[index++].trim().replace(/^>(\{#[0-9a-fA-F]{6}\})?\s?/, ""));
+      blocks.push({ type: "note", color, text: body.join(" ") });
       continue;
     }
 
@@ -185,7 +189,7 @@ export function diagramSources(_schema: Schema, blocks: DocBlock[]): string[] {
  * so the page can scale it, keeping the `viewBox`.
  */
 export function canvasDiagram(schema: Schema, theme: DocumentTheme): DocumentDiagram {
-  const svg = renderDiagramSVG(schema, { theme, edges: "straight" });
+  const svg = renderDiagramSVG(schema, { theme, edges: "straight", key: "bottom" });
   const open = svg.match(/^<svg\b[^>]*>/)?.[0] ?? "<svg>";
   const size = (name: string) => Number(open.match(new RegExp(`\\s${name}="([\\d.]+)"`))?.[1] ?? 800);
   return { markup: svg.replace(open, open.replace(/\s(width|height)="[\d.]+"/g, "")), width: size("width"), height: size("height") };
@@ -205,11 +209,37 @@ const paint = (base: string, tone: string | undefined, property: "background" | 
 };
 
 /** `code`, **bold**, *italic*, [[badges]], ==highlights== and !!coloured words!!; code is cut out first so nothing inside it is formatted. */
+/**
+ * Table colours by normalized name, while a page is being drawn (`renderBlocks`
+ * sets them for its one synchronous pass): a table named in code, `CORE_GRIDS`
+ * or `CORE_GRIDS(GRID_ID)`, is drawn in the colour of its card on the canvas.
+ */
+let tableColors = new Map<string, string>();
+
+export function tableColorsOf(schema: Pick<Schema, "tables">) {
+  return new Map(schema.tables.flatMap((table) => {
+    const color = currentTableColor(table.color).a;
+    return /^#[0-9a-f]{6}$/i.test(color) ? [[normalizeIdentifier(table.name), color.toLowerCase()] as const] : [];
+  }));
+}
+
+/** The table a piece of code names, if it names one: `T` or `T(COLUMN)`. */
+export const tableNamedBy = (code: string, colors: Map<string, string>) => {
+  const name = code.trim().match(/^([A-Za-z_$#][\w$#]*)(?:\s*\([^)]*\))?$/)?.[1];
+  return name ? colors.get(normalizeIdentifier(name)) : undefined;
+};
+
 export function inline(text: string): string {
   return text.split(/(`[^`]+`)/).map((part) => {
-    if (/^`[^`]+`$/.test(part)) return `<code>${escape(part.slice(1, -1))}</code>`;
+    if (/^`[^`]+`$/.test(part)) {
+      const color = tableNamedBy(part.slice(1, -1), tableColors);
+      return color ? `<code class="table-ref" style="--table:${color}">${escape(part.slice(1, -1))}</code>` : `<code>${escape(part.slice(1, -1))}</code>`;
+    }
     return escape(part)
-      .replace(/\[\[([+-]?)([^\]]+)\]\]/g, (_, tone: string, label: string) => `<span class="badge${tone === "+" ? " good" : tone === "-" ? " bad" : ""}">${label}</span>`)
+      // [[x]] blue, [[+x]] green, [[-x]] red, [[{#ff8800}x]] in that colour.
+      .replace(/\[\[([+-]|\{#[0-9a-fA-F]{6}\})?([^\]]+)\]\]/g, (_, tone: string | undefined, label: string) => tone?.startsWith("{")
+        ? `<span class="badge custom" style="--badge:${tone.slice(1, -1).toLowerCase()}">${label}</span>`
+        : `<span class="badge${tone === "+" ? " good" : tone === "-" ? " bad" : ""}">${label}</span>`)
       .replace(HIGHLIGHT, (_, tone: string | undefined, words: string) => `<mark ${paint("hl", tone, "background")}>${words}</mark>`)
       .replace(COLORED, (_, tone: string | undefined, words: string) => `<span ${paint("tc", tone, "color")}>${words}</span>`)
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
@@ -238,8 +268,8 @@ export function columnRules(schema: Schema, table: Table, column: Column): strin
   ].filter(Boolean).join(", ");
 }
 
-const htmlTable = (headers: string[], rows: string[][], className = "") =>
-  `<div class="table${className ? ` ${className}` : ""}"><table><thead><tr>${headers.map((header) => `<th>${inline(header)}</th>`).join("")}</tr></thead><tbody>${
+const htmlTable = (headers: string[], rows: string[][], className = "", color = "") =>
+  `<div class="table${className ? ` ${className}` : ""}"${color ? ` style="--table:${color}"` : ""}><table><thead><tr>${headers.map((header) => `<th>${inline(header)}</th>`).join("")}</tr></thead><tbody>${
     rows.map((row) => `<tr>${row.map((cell) => `<td>${cell ? inline(cell) : `<span class="muted">—</span>`}</td>`).join("")}</tr>`).join("")
   }</tbody></table></div>`;
 
@@ -247,8 +277,9 @@ const findTable = (schema: Schema, name: string) => schema.tables.find((table) =
 
 const columnsTable = (schema: Schema, table: Table, lang: DocLang) => htmlTable(
   pageStrings(lang).columnHeaders,
-  table.columns.map((column) => [`\`${normalizeIdentifier(column.name)}\``, `\`${typeString(column)}\``, columnRules(schema, table, column), column.comment?.trim() ?? ""]),
+  table.columns.map((column) => [`\`${normalizeIdentifier(column.name)}\``, `\`${typeName(column, dialectOf(schema))}\``, columnRules(schema, table, column), column.comment?.trim() ?? ""]),
   "columns",
+  tableColors.get(normalizeIdentifier(table.name)) ?? "",
 );
 
 const relationshipsTable = (schema: Schema, lang: DocLang) => {
@@ -281,6 +312,16 @@ const card = (item: CardItem, stats: boolean) => {
 };
 
 export function renderBlocks(schema: Schema, blocks: DocBlock[], diagrams: Map<string, DocumentDiagram>, lang: DocLang = DEFAULT_LANG, theme: DocumentTheme = "light"): string {
+  const previous = tableColors;
+  tableColors = tableColorsOf(schema);
+  try {
+    return drawBlocks(schema, blocks, diagrams, lang, theme);
+  } finally {
+    tableColors = previous;
+  }
+}
+
+function drawBlocks(schema: Schema, blocks: DocBlock[], diagrams: Map<string, DocumentDiagram>, lang: DocLang, theme: DocumentTheme): string {
   const canonical = normalizeRelationships(schema);
   const words = pageStrings(lang);
   return blocks.map((block) => {
@@ -288,7 +329,7 @@ export function renderBlocks(schema: Schema, blocks: DocBlock[], diagrams: Map<s
       case "kicker": return `<p class="kicker">${inline(block.text)}</p>`;
       case "heading": return `<h${block.level}>${inline(block.text)}</h${block.level}>`;
       case "paragraph": return `<p>${inline(block.text)}</p>`;
-      case "note": return `<p class="note">${inline(block.text)}</p>`;
+      case "note": return `<p class="note"${block.color ? ` style="--note:${block.color}"` : ""}>${inline(block.text)}</p>`;
       case "callout": return `<p class="callout${block.tone ? ` callout-${block.tone}` : ""}">${inline(block.text)}</p>`;
       case "rule": return `<hr/>`;
       case "list": return `<${block.ordered ? "ol" : "ul"}>${block.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${block.ordered ? "ol" : "ul"}>`;
@@ -336,8 +377,8 @@ const SYNTAX_VARS: Record<DocumentTheme, string> = {
 };
 
 const THEME_VARS: Record<DocumentTheme, string> = {
-  light: "--bg:#ffffff;--text:#1f2328;--muted:#59636e;--panel:#f6f8fa;--border:#d1d9e0;--chip:#eff2f5;--code:#0550ae;--accent:#0969da;--good:#1a7f37;--good-bg:#dafbe1;--bad:#cf222e;--bad-bg:#ffebe9;--badge-bg:#ddf4ff;--warm:#bc4c00;--hl-yellow:#fff0a0;--hl-green:#c8f2d2;--hl-blue:#cfe7ff;--hl-pink:#ffd5e5;--callout-bg:#eef6ff;--warn:#9a6700;--warn-bg:#fff8c5;--tc-yellow:#b45309;--tc-green:#15803d;--tc-blue:#1d4ed8;--tc-pink:#be185d",
-  dark: "--bg:#0d1117;--text:#e6edf3;--muted:#8b949e;--panel:#161b22;--border:#30363d;--chip:#1f2733;--code:#79c0ff;--accent:#58a6ff;--good:#3fb950;--good-bg:#12351f;--bad:#f85149;--bad-bg:#3c1618;--badge-bg:#0c2d4d;--warm:#f0883e;--hl-yellow:rgba(250,204,21,.32);--hl-green:rgba(63,185,80,.32);--hl-blue:rgba(88,166,255,.32);--hl-pink:rgba(247,120,186,.32);--callout-bg:rgba(88,166,255,.10);--warn:#d29922;--warn-bg:rgba(210,153,34,.12);--tc-yellow:#facc15;--tc-green:#4ade80;--tc-blue:#60a5fa;--tc-pink:#f472b6",
+  light: "--bg:#ffffff;--text:#1f2328;--muted:#59636e;--panel:#f6f8fa;--border:#d1d9e0;--chip:#eff2f5;--code:#0550ae;--accent:#0969da;--good:#1a7f37;--good-bg:#dafbe1;--bad:#cf222e;--bad-bg:#ffebe9;--badge-bg:#ddf4ff;--warm:#bc4c00;--hl-yellow:#fff0a0;--hl-green:#c8f2d2;--hl-blue:#cfe7ff;--hl-pink:#ffd5e5;--callout-bg:#eef6ff;--note-default:#6366f1;--warn:#9a6700;--warn-bg:#fff8c5;--tc-yellow:#b45309;--tc-green:#15803d;--tc-blue:#1d4ed8;--tc-pink:#be185d",
+  dark: "--bg:#0d1117;--text:#e6edf3;--muted:#8b949e;--panel:#161b22;--border:#30363d;--chip:#1f2733;--code:#79c0ff;--accent:#58a6ff;--good:#3fb950;--good-bg:#12351f;--bad:#f85149;--bad-bg:#3c1618;--badge-bg:#0c2d4d;--warm:#f0883e;--hl-yellow:rgba(250,204,21,.32);--hl-green:rgba(63,185,80,.32);--hl-blue:rgba(88,166,255,.32);--hl-pink:rgba(247,120,186,.32);--callout-bg:rgba(88,166,255,.10);--note-default:#818cf8;--warn:#d29922;--warn-bg:rgba(210,153,34,.12);--tc-yellow:#facc15;--tc-green:#4ade80;--tc-blue:#60a5fa;--tc-pink:#f472b6",
 };
 
 /** Scoped to `.doc` so the page renders the same inside an iframe, a file or an SVG `foreignObject`. */
@@ -351,7 +392,7 @@ export const documentCss = (theme: DocumentTheme) => `
 .doc h4{font-size:15px;margin:0 0 6px;font-weight:700;overflow-wrap:anywhere}
 .doc p{margin:0 0 14px}
 .doc .kicker{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0}
-.doc .note{font-size:13px;color:var(--muted)}
+.doc .note{--note:var(--note-default);font-size:14px;color:var(--text);background:color-mix(in srgb,var(--note) 9%,transparent);border-left:3px solid var(--note);border-radius:0 8px 8px 0;padding:8px 14px;margin:0 0 14px}
 .doc .callout{background:var(--callout-bg);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);border-left:4px solid var(--accent);border-radius:8px;padding:12px 16px;font-size:15.5px;font-weight:500;margin:4px 0 18px}
 /* Kinds are prefixed: .warning is already the missing-block message. */
 .doc .callout-tip{--accent:var(--good);--callout-bg:var(--good-bg)}.doc .callout-warning{--accent:var(--warn);--callout-bg:var(--warn-bg)}.doc .callout-danger{--accent:var(--bad);--callout-bg:var(--bad-bg)}
@@ -382,6 +423,7 @@ export const documentCss = (theme: DocumentTheme) => `
 .doc .badge{display:inline-block;font:700 11px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:0 6px;border-radius:4px;background:var(--badge-bg);color:var(--accent);vertical-align:1px}
 .doc .badge.good{background:var(--good-bg);color:var(--good)}
 .doc .badge.bad{background:var(--bad-bg);color:var(--bad)}
+.doc .badge.custom{background:color-mix(in srgb,var(--badge) 16%,transparent);color:var(--badge)}
 .doc .table{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:0 0 18px}
 .doc table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.5}
 .doc th{background:var(--panel);color:var(--muted);text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:9px 12px}
@@ -389,6 +431,10 @@ export const documentCss = (theme: DocumentTheme) => `
 .doc td code{overflow-wrap:anywhere}
 .doc .relationships td:nth-child(4){white-space:nowrap}
 .doc .columns table{table-layout:fixed}
+.doc .table.columns[style]{border-top:3px solid var(--table)}
+.doc code.table-ref,.doc span.table-ref{background:color-mix(in srgb,var(--table) 24%,transparent)!important;color:var(--text)!important;font-weight:650;border-radius:4px}
+.doc span.table-ref{padding:1px 5px}
+.doc code:has(>span.table-ref){background:none!important;padding:0}
 .doc .columns th:nth-child(1){width:22%}.doc .columns th:nth-child(2){width:15%}.doc .columns th:nth-child(3){width:30%}
 .doc .columns td:first-child code,.doc .columns td:nth-child(2) code{overflow-wrap:anywhere}
 .doc .columns td:first-child code,.doc .columns td:nth-child(2) code{background:none;padding:0;color:var(--text)}
@@ -400,6 +446,8 @@ export const documentCss = (theme: DocumentTheme) => `
 .doc .diagram{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px;margin:0 0 16px;text-align:center}
 .doc .diagram svg{width:100%;height:auto;display:inline-block}
 .doc .diagram.er-figure{padding:0;overflow:hidden}
+/* The ER diagram fills the page, however wide: larger in a wide export, smaller on a narrow page. Flowcharts keep their own size. */
+.doc .diagram.er-figure svg{max-width:none!important;display:block}
 .doc .diagram.empty{padding:40px 16px}
 .doc .footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
 @page{margin:12mm}

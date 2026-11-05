@@ -1,5 +1,7 @@
 "use client";
 
+import { NewDiagramDialog } from "@/app/components/new-diagram-dialog";
+import { convertToOracle, convertToPostgres, dialectOf } from "@/app/lib/dialect";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRightIcon, ChevronDownIcon, ChevronRightIcon, LinkIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -104,6 +106,7 @@ export default function Workspace({
   user,
 }: DesignerProps) {
   const router = useRouter();
+  const [newDiagramOpen, setNewDiagramOpen] = useState(false);
   const {
     schema,
     schemaRef,
@@ -884,25 +887,17 @@ export default function Workspace({
   );
 
   const fileMenu: MenuItem[] = [
+    // Asks which database first; see `NewDiagramDialog`.
+    { label: "New diagram", onSelect: () => setNewDiagramOpen(true) },
     {
-      label: "New diagram",
-      onSelect: async () => {
-        const response = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            ...(workspaceSlug ? { workspace: workspaceSlug } : {}),
-            name: "Untitled Diagram",
-          }),
-        });
-        if (response.ok) {
-          const created = (await response.json()) as Schema;
-          router.push(
-            workspaceSlug
-              ? `/${workspaceSlug}/${created.id}`
-              : `/project/${created.id}`,
-          );
-        } else toast.error("Could not create project.");
+      // Columns are stored as Oracle types either way, so switching is a relabel plus,
+      // towards PostgreSQL, moving each type to the twin that keeps its meaning. One undo reverts it.
+      label: dialectOf(schema) === "postgres" ? "Switch to Oracle" : "Switch to PostgreSQL",
+      disabled: readOnly,
+      onSelect: () => {
+        const toPostgres = dialectOf(schema) !== "postgres";
+        commit(toPostgres ? convertToPostgres(schema) : convertToOracle(schema));
+        toast.success(toPostgres ? "This diagram is now PostgreSQL. The Oracle DDL stays in Export." : "This diagram is now Oracle.");
       },
     },
     { separator: true },
@@ -1303,6 +1298,7 @@ export default function Workspace({
 
   return (
     <div className={`app ${readOnly ? "share-read-only" : ""}`}>
+      <NewDiagramDialog isOpen={newDiagramOpen} onOpenChange={setNewDiagramOpen} workspace={workspaceSlug} />
       <ControlPanel
         menus={menus}
         save={save}

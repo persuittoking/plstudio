@@ -8,6 +8,8 @@
  * Nothing here holds state or reads the schema — props in, markup out.
  */
 
+import { useDialect } from "@/app/components/designer/context/dialect-context";
+import { typeName } from "@/app/lib/dialect";
 import {
   createContext,
   Fragment,
@@ -36,7 +38,6 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   primaryKeyColumns,
-  typeString,
   type Column,
   type KeyStrategy,
   type SchemaGroup,
@@ -122,6 +123,7 @@ export const ColumnCard = memo(function ColumnCard({
   column: Column;
   reference?: { table: Table; column: Column };
 }) {
+  const dialect = useDialect();
   const inUniqueGroup = (table.uniques ?? []).some((constraint) => constraint.columnIds.includes(column.id));
   return (
     <div className="flex flex-col gap-2">
@@ -133,7 +135,7 @@ export const ColumnCard = memo(function ColumnCard({
           className="shrink-0 font-mono text-xs"
           style={{ color: typeColorVar(column.type) }}
         >
-          {typeString(column)}
+          {typeName(column, dialect)}
         </span>
       </div>
       {(column.pk || column.unique || column.notNull || column.fk || inUniqueGroup) && (

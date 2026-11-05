@@ -32,3 +32,17 @@ describe("colours by code", () => {
     expect(inlineText(nodes)).toBe(source);
   });
 });
+
+describe("badge colours", () => {
+  it("draws a badge in any colour, and keeps the three tones", () => {
+    expect(inline("[[BOR]] [[+YANGI]] [[-v2]] [[{#F97316}TEZ]]")).toBe(
+      `<span class="badge">BOR</span> <span class="badge good">YANGI</span> <span class="badge bad">v2</span> <span class="badge custom" style="--badge:#f97316">TEZ</span>`);
+  });
+
+  it("survives the editor and back", () => {
+    const source = "Holat: [[{#f97316}TEZ]], [[+YANGI]] va [[BOR]].";
+    const nodes = inlineNodes(source);
+    expect(nodes.find((node) => node.text === "TEZ")?.marks).toEqual([{ type: "badge", attrs: { tone: "#f97316" } }]);
+    expect(inlineText(nodes)).toBe(source);
+  });
+});

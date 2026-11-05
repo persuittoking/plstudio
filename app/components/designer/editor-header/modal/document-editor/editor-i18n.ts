@@ -20,8 +20,9 @@ export type EditorStrings = {
   blocks: { label: string; paragraph: string; heading: (level: number) => string; kicker: string; note: string; info: string; tip: string; warning: string; danger: string; bullets: string; numbers: string; code: string };
   marks: { bold: string; italic: string; code: string; badge: string; badgeGood: string; badgeBad: string; highlight: string; highlightColors: string; textColor: string; textColors: string; clear: string };
   colors: { yellow: string; green: string; blue: string; pink: string; none: string };
-  badges: { label: string; plain: string; good: string; bad: string };
+  badges: { label: string; plain: string; good: string; bad: string; default: string };
   colorPicker: { choose: string; code: string; apply: string; names: Record<string, string> };
+  noteColor: { label: string; default: string };
   lists: { bullets: string; numbers: string };
   history: { undo: string; redo: string };
   table: { label: string; rowAbove: string; rowBelow: string; columnLeft: string; columnRight: string; deleteRow: string; deleteColumn: string; deleteTable: string };
@@ -58,10 +59,11 @@ const UZ: EditorStrings = {
   blocks: { label: "Satr turi", paragraph: "Matn", heading: (level) => `Sarlavha ${level}`, kicker: "Ustki satr", note: "Izoh", info: "Muhim", tip: "Maslahat", warning: "Ogohlantirish", danger: "Xavf", bullets: "Ro'yxat", numbers: "Raqamli ro'yxat", code: "Kod bloki" },
   marks: { bold: "Qalin (Ctrl+B)", italic: "Kursiv (Ctrl+I)", code: "Kod (Ctrl+E)", badge: "Belgi", badgeGood: "Yashil belgi (YANGI)", badgeBad: "Qizil belgi", highlight: "Ajratish (Ctrl+Shift+H)", highlightColors: "Ajratish rangi", textColor: "Matn rangi", textColors: "Matn rangi", clear: "Formatni olib tashlash" },
   colors: { yellow: "Sariq", green: "Yashil", blue: "Ko'k", pink: "Pushti", none: "Rangsiz" },
-  badges: { label: "Belgi", plain: "Ko'k", good: "Yashil (YANGI)", bad: "Qizil" },
+  badges: { label: "Belgi", plain: "Ko'k", good: "Yashil (YANGI)", bad: "Qizil", default: "Odatiy" },
+  noteColor: { label: "Izoh rangi", default: "Odatiy" },
   colorPicker: {
     choose: "Rangni tanlash", code: "Rang kodi", apply: "Qo'llash",
-    names: { red: "Qizil", orange: "To'q sariq", amber: "Qahrabo", lime: "Och yashil", emerald: "Zumrad", teal: "Moviy-yashil", cyan: "Moviy", indigo: "Indigo", violet: "Binafsha", fuchsia: "Fuksiya", brown: "Jigarrang", slate: "Kulrang" },
+    names: { yellow: "Sariq", green: "Yashil", blue: "Ko'k", pink: "Pushti", red: "Qizil", orange: "To'q sariq", amber: "Qahrabo", lime: "Och yashil", emerald: "Zumrad", teal: "Moviy-yashil", cyan: "Moviy", indigo: "Indigo", violet: "Binafsha", fuchsia: "Fuksiya", brown: "Jigarrang", slate: "Kulrang" },
   },
   lists: { bullets: "Ro'yxat", numbers: "Raqamli ro'yxat" },
   history: { undo: "Bekor qilish (Ctrl+Z)", redo: "Qaytarish (Ctrl+Shift+Z)" },
@@ -99,10 +101,11 @@ const RU: EditorStrings = {
   blocks: { label: "Тип строки", paragraph: "Текст", heading: (level) => `Заголовок ${level}`, kicker: "Надзаголовок", note: "Примечание", info: "Важное", tip: "Совет", warning: "Предупреждение", danger: "Опасно", bullets: "Список", numbers: "Нумерованный список", code: "Блок кода" },
   marks: { bold: "Жирный (Ctrl+B)", italic: "Курсив (Ctrl+I)", code: "Код (Ctrl+E)", badge: "Метка", badgeGood: "Зелёная метка (НОВОЕ)", badgeBad: "Красная метка", highlight: "Выделить (Ctrl+Shift+H)", highlightColors: "Цвет выделения", textColor: "Цвет текста", textColors: "Цвет текста", clear: "Убрать форматирование" },
   colors: { yellow: "Жёлтый", green: "Зелёный", blue: "Синий", pink: "Розовый", none: "Без цвета" },
-  badges: { label: "Метка", plain: "Синяя", good: "Зелёная (НОВОЕ)", bad: "Красная" },
+  badges: { label: "Метка", plain: "Синяя", good: "Зелёная (НОВОЕ)", bad: "Красная", default: "Обычная" },
+  noteColor: { label: "Цвет примечания", default: "По умолчанию" },
   colorPicker: {
     choose: "Выбрать цвет", code: "Код цвета", apply: "Применить",
-    names: { red: "Красный", orange: "Оранжевый", amber: "Янтарный", lime: "Лаймовый", emerald: "Изумрудный", teal: "Бирюзовый", cyan: "Голубой", indigo: "Индиго", violet: "Фиолетовый", fuchsia: "Фуксия", brown: "Коричневый", slate: "Серый" },
+    names: { yellow: "Жёлтый", green: "Зелёный", blue: "Синий", pink: "Розовый", red: "Красный", orange: "Оранжевый", amber: "Янтарный", lime: "Лаймовый", emerald: "Изумрудный", teal: "Бирюзовый", cyan: "Голубой", indigo: "Индиго", violet: "Фиолетовый", fuchsia: "Фуксия", brown: "Коричневый", slate: "Серый" },
   },
   lists: { bullets: "Список", numbers: "Нумерованный список" },
   history: { undo: "Отменить (Ctrl+Z)", redo: "Повторить (Ctrl+Shift+Z)" },
@@ -140,10 +143,11 @@ const EN: EditorStrings = {
   blocks: { label: "Line type", paragraph: "Text", heading: (level) => `Heading ${level}`, kicker: "Kicker", note: "Note", info: "Key point", tip: "Tip", warning: "Warning", danger: "Danger", bullets: "Bullet list", numbers: "Numbered list", code: "Code block" },
   marks: { bold: "Bold (Ctrl+B)", italic: "Italic (Ctrl+I)", code: "Code (Ctrl+E)", badge: "Badge", badgeGood: "Green badge (NEW)", badgeBad: "Red badge", highlight: "Highlight (Ctrl+Shift+H)", highlightColors: "Highlight colour", textColor: "Text colour", textColors: "Text colour", clear: "Clear formatting" },
   colors: { yellow: "Yellow", green: "Green", blue: "Blue", pink: "Pink", none: "No colour" },
-  badges: { label: "Badge", plain: "Blue", good: "Green (NEW)", bad: "Red" },
+  badges: { label: "Badge", plain: "Blue", good: "Green (NEW)", bad: "Red", default: "Default" },
+  noteColor: { label: "Note colour", default: "Default" },
   colorPicker: {
     choose: "Choose a colour", code: "Colour code", apply: "Apply",
-    names: { red: "Red", orange: "Orange", amber: "Amber", lime: "Lime", emerald: "Emerald", teal: "Teal", cyan: "Cyan", indigo: "Indigo", violet: "Violet", fuchsia: "Fuchsia", brown: "Brown", slate: "Slate" },
+    names: { yellow: "Yellow", green: "Green", blue: "Blue", pink: "Pink", red: "Red", orange: "Orange", amber: "Amber", lime: "Lime", emerald: "Emerald", teal: "Teal", cyan: "Cyan", indigo: "Indigo", violet: "Violet", fuchsia: "Fuchsia", brown: "Brown", slate: "Slate" },
   },
   lists: { bullets: "Bulleted list", numbers: "Numbered list" },
   history: { undo: "Undo (Ctrl+Z)", redo: "Redo (Ctrl+Shift+Z)" },

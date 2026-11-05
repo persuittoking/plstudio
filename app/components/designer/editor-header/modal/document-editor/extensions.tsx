@@ -98,7 +98,10 @@ export const Badge = Mark.create({
     tone: {
       default: "",
       parseHTML: (element) => element.getAttribute("data-tone") ?? "",
-      renderHTML: (attributes) => ({ "data-tone": attributes.tone, class: `badge${attributes.tone ? ` ${attributes.tone}` : ""}` }),
+      // A tone is good, bad, nothing (blue) or a colour code, drawn as the page draws it.
+      renderHTML: (attributes) => (/^#[0-9a-f]{6}$/i.test(String(attributes.tone))
+        ? { "data-tone": attributes.tone, class: "badge custom", style: `--badge:${attributes.tone}` }
+        : { "data-tone": attributes.tone, class: `badge${attributes.tone ? ` ${attributes.tone}` : ""}` }),
     },
   }),
   parseHTML: () => [{ tag: "span.badge" }],
@@ -163,7 +166,22 @@ const textBlock = (name: string, tag: string, className: string) =>
   });
 
 export const Kicker = textBlock("kicker", "p", "kicker");
-export const Note = textBlock("note", "p", "note");
+/** A quiet side remark, in a colour of its own; none set is the page's default note colour. */
+export const Note = Node.create({
+  name: "note",
+  group: "block",
+  content: "inline*",
+  defining: true,
+  addAttributes: () => ({
+    color: {
+      default: null,
+      parseHTML: (element) => element.style.getPropertyValue("--note").trim() || null,
+      renderHTML: (attributes) => (attributes.color ? { style: `--note:${attributes.color}` } : {}),
+    },
+  }),
+  parseHTML: () => [{ tag: "p.note" }],
+  renderHTML: ({ HTMLAttributes }) => ["p", mergeAttributes(HTMLAttributes, { class: "note" }), 0],
+});
 /** The point to remember, in one of four kinds: information (none), tip, warning or danger. */
 export const Callout = Node.create({
   name: "callout",

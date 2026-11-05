@@ -1,5 +1,5 @@
 import type { DocLang } from "@/app/lib/document-i18n";
-import { normalizeIdentifier, normalizeRelationships, primaryKeyColumns, type KeyStrategy, type Schema, type Table } from "@/app/lib/schema";
+import { currentTableColor, normalizeIdentifier, normalizeRelationships, primaryKeyColumns, type KeyStrategy, type Schema, type Table } from "@/app/lib/schema";
 import { validateSchema } from "@/app/lib/validation";
 
 /**
@@ -69,7 +69,7 @@ const UZ: Words = {
   defaults: (count) => `Standart qiymatli ustunlar: ${count} ta.`,
   er: "ER diagramma",
   erText: "Jadvallar va ular orasidagi bog'lanishlar — kanvasdagi kabi.",
-  heading: (table) => `### ${code(table)} ustunlari`,
+  heading: (table) => `### ${table} ustunlari`,
   facts: (columns, key, strategy) => `${columns} ta ustun, kalit ${key}${strategy === "none" ? "" : ` (!!+${strategy === "identity" ? "IDENTITY" : "sequence + trigger"}!!)`}.`,
   noKey: (columns) => `${columns} ta ustun, !!-birlamchi kalit yo'q!!.`,
   pointsTo: (targets) => `${targets} jadvaliga bog'lanadi.`,
@@ -108,7 +108,7 @@ const RU: Words = {
   defaults: (count) => `Столбцов со значением по умолчанию: ${count}.`,
   er: "ER-диаграмма",
   erText: "Таблицы и связи между ними — как на холсте.",
-  heading: (table) => `### Столбцы ${code(table)}`,
+  heading: (table) => `### Столбцы ${table}`,
   facts: (columns, key, strategy) => `Столбцов: ${columns}, ключ ${key}${strategy === "none" ? "" : ` (!!+${strategy === "identity" ? "IDENTITY" : "sequence + trigger"}!!)`}.`,
   noKey: (columns) => `Столбцов: ${columns}, !!-первичного ключа нет!!.`,
   pointsTo: (targets) => `Ссылается на ${targets}.`,
@@ -147,7 +147,7 @@ const EN: Words = {
   defaults: (count) => `Columns with a default value: ${count}.`,
   er: "ER diagram",
   erText: "The tables and how they connect — as on the canvas.",
-  heading: (table) => `### ${code(table)} columns`,
+  heading: (table) => `### ${table} columns`,
   facts: (columns, key, strategy) => `${plural(columns, "column", "columns")}, key ${key}${strategy === "none" ? "" : ` (!!+${strategy === "identity" ? "IDENTITY" : "sequence + trigger"}!!)`}.`,
   noKey: (columns) => `${plural(columns, "column", "columns")}, !!-no primary key!!.`,
   pointsTo: (targets) => `Refers to ${targets}.`,
@@ -201,7 +201,12 @@ export function draftDocument(input: Schema, lang: DocLang = "uz"): string {
     parentsOf.get(rel.startTableId)!.add(rel.endTableId);
     childrenOf.get(rel.endTableId)!.add(rel.startTableId);
   }
-  const names = (ids: Iterable<string>) => list([...ids].map((id) => byId.get(id)).filter((table): table is Table => Boolean(table)).map((table) => code(name(table))), and);
+  /** A table's name in its own colour, the one its card has on the canvas, so the text and the diagram match. */
+  const ref = (table: Table) => {
+    const color = currentTableColor(table.color).a;
+    return /^#[0-9a-f]{6}$/i.test(color) ? `**=={${color.toLowerCase()}}${name(table)}==**` : code(name(table));
+  };
+  const names = (ids: Iterable<string>) => list([...ids].map((id) => byId.get(id)).filter((table): table is Table => Boolean(table)).map(ref), and);
   const columns = tables.flatMap((table) => table.columns);
   const degree = (table: Table) => (childrenOf.get(table.id)?.size ?? 0) + (parentsOf.get(table.id)?.size ?? 0);
 
@@ -211,8 +216,8 @@ export function draftDocument(input: Schema, lang: DocLang = "uz"): string {
   // The table the others lean on, or failing that the largest.
   const central = [...tables].sort((a, b) => (childrenOf.get(b.id)?.size ?? 0) - (childrenOf.get(a.id)?.size ?? 0))[0];
   const widest = [...tables].sort((a, b) => b.columns.length - a.columns.length)[0];
-  if (central && childrenOf.get(central.id)?.size) out.push(`!> ${words.central(code(name(central)), childrenOf.get(central.id)!.size)}`, "");
-  else if (widest) out.push(`!> ${words.widest(code(name(widest)), widest.columns.length)}`, "");
+  if (central && childrenOf.get(central.id)?.size) out.push(`!> ${words.central(ref(central), childrenOf.get(central.id)!.size)}`, "");
+  else if (widest) out.push(`!> ${words.widest(ref(widest), widest.columns.length)}`, "");
 
   if (tables.length) {
     const stat = ([title, text]: [string, string], value: number) => [`### ${value} | ${title}`, text];
@@ -224,7 +229,7 @@ export function draftDocument(input: Schema, lang: DocLang = "uz"): string {
     const strategies: KeyStrategy[] = ["sequence-trigger", "identity", "none"];
     for (const strategy of strategies) {
       const using = tables.filter((table) => (table.keyStrategy ?? "none") === strategy && primaryKeyColumns(table).length);
-      if (using.length) out.push(`- ${words.keys[strategy](list(using.map((table) => code(name(table))), and))}`);
+      if (using.length) out.push(`- ${words.keys[strategy](list(using.map(ref), and))}`);
     }
     out.push(`- ${relationships.length ? words.foreignKeys(relationships.length, relationships.filter((rel) => rel.deleteConstraint === "Cascade").length) : words.noForeignKeys}`);
     const unique = columns.filter((column) => column.unique).length + tables.reduce((sum, table) => sum + (table.uniques?.length ?? 0), 0);
@@ -240,7 +245,7 @@ export function draftDocument(input: Schema, lang: DocLang = "uz"): string {
     out.push(":::cards", ...key.flatMap((table) => {
       const pk = primaryKeyColumns(table).map((column) => normalizeIdentifier(column.name));
       const summary = [words.facts(table.columns.length, pk.map(code).join(", ") || "—", table.keyStrategy ?? "none")];
-      return [`### ${name(table)}`, ...(pk.length ? [`\`${pk.join(", ")}\``] : []), table.comment?.trim() || summary[0]];
+      return [`### ${ref(table)}`, ...(pk.length ? [`\`${pk.join(", ")}\``] : []), table.comment?.trim() || summary[0]];
     }), ":::", "");
 
     out.push(`## ${words.er}`, "", words.erText, "", "{{er}}", "");
@@ -251,7 +256,7 @@ export function draftDocument(input: Schema, lang: DocLang = "uz"): string {
       const facts = [pk.length ? words.facts(table.columns.length, pk.join(", "), table.keyStrategy ?? "none") : words.noKey(table.columns.length)];
       if (parentsOf.get(table.id)?.size) facts.push(words.pointsTo(names(parentsOf.get(table.id)!)));
       if (childrenOf.get(table.id)?.size) facts.push(words.pointedBy(names(childrenOf.get(table.id)!)));
-      out.push(words.heading(name(table)), "", ...(table.comment?.trim() ? [table.comment.trim(), ""] : []), facts.join(" "), "", `{{columns ${name(table)}}}`, "");
+      out.push(words.heading(ref(table)), "", ...(table.comment?.trim() ? [table.comment.trim(), ""] : []), facts.join(" "), "", `{{columns ${name(table)}}}`, "");
     }
   }
 
@@ -272,14 +277,14 @@ export function draftDocument(input: Schema, lang: DocLang = "uz"): string {
     out.push(`## ${words.order}`, "", words.orderText, "");
     creationOrder(tables, parentsOf).forEach((table, index) => {
       const parents = [...(parentsOf.get(table.id) ?? [])].filter((parent) => parent !== table.id);
-      out.push(`${index + 1}. ${parents.length ? words.createdAfter(`**${code(name(table))}**`, names(parents)) : words.createdFirst(`**${code(name(table))}**`)}`);
+      out.push(`${index + 1}. ${parents.length ? words.createdAfter(ref(table), names(parents)) : words.createdFirst(ref(table))}`);
     });
     out.push("");
   }
 
   // What would stop the DDL, then what a reader would miss.
   const issues = validateSchema(input).slice(0, 8).map((issue) => `- ${issue.severity === "error" ? "[[-ERROR]]" : "[[WARNING]]"} ${issue.message}`);
-  const silent = tables.filter((table) => !table.comment?.trim()).slice(0, 8).map((table) => `- ${words.noComment(code(name(table)))}`);
+  const silent = tables.filter((table) => !table.comment?.trim()).slice(0, 8).map((table) => `- ${words.noComment(ref(table))}`);
   out.push(`## ${words.review}`, "", ...(issues.length || silent.length ? [...issues, ...silent] : [words.clean]), "");
 
   const memos = (schema.memos ?? []).map((memo) => memo.text.trim()).filter(Boolean);

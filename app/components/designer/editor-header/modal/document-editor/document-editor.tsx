@@ -10,6 +10,7 @@ import {
   ArrowDownIcon,
   BanIcon,
   CheckIcon,
+  StickyNoteIcon,
   ChevronDownIcon,
   ArrowUpIcon,
   BoldIcon,
@@ -48,6 +49,7 @@ import { filterItems, insertGroups, type InsertItem } from "./commands";
 import { editorStrings, type EditorStrings } from "./editor-i18n";
 import { EditorEnvironmentContext, HIGHLIGHT_COLORS, documentExtensions, type HighlightColor } from "./extensions";
 import { CodeCompletion, acceptCompletion, completionKey, type CompletionState } from "./code-complete";
+import { TableColors, tableColorsKey } from "./table-colors";
 import { SlashCommand, type SlashBridge, type SlashState } from "./slash-command";
 import { EDITOR_CSS } from "./editor-css";
 
@@ -116,7 +118,7 @@ export function DocumentEditor({
   }), []);
 
   const editor = useEditor({
-    extensions: [...documentExtensions(() => langRef.current), SlashCommand.configure({ bridge }), CodeCompletion.configure({ schema: () => schemaRef.current })],
+    extensions: [...documentExtensions(() => langRef.current), SlashCommand.configure({ bridge }), CodeCompletion.configure({ schema: () => schemaRef.current }), TableColors.configure({ schema: () => schemaRef.current })],
     content: toTiptap(value),
     editable: !readOnly,
     immediatelyRender: false,
@@ -137,6 +139,8 @@ export function DocumentEditor({
     queueMicrotask(() => { if (!editor.isDestroyed) editor.commands.setContent(toTiptap(value), { emitUpdate: false }); });
   }, [editor, value]);
   useEffect(() => { editor?.setEditable(!readOnly); }, [editor, readOnly]);
+  // A table renamed or recoloured on the canvas: redraw the table names in the text.
+  useEffect(() => { if (editor && !editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(tableColorsKey, true)); }, [editor, schema]);
   // A new language relabels the placeholders, which are drawn on the next transaction.
   useEffect(() => {
     if (!editor) return;
@@ -298,7 +302,7 @@ type CustomColor = { value: string; apply: (hex: string) => void; words: EditorS
  * code field does take it, and Tiptap keeps the selection for when it applies.
  */
 function Picker({ label, icon, current, options, extra, custom, none }: {
-  label: string; icon: ReactNode; current?: string; options: PickerOption[]; extra?: PickerOption[]; custom?: CustomColor; none: PickerOption;
+  label: string; icon: ReactNode; current?: string; options: PickerOption[]; extra?: PickerOption[]; custom?: CustomColor; none?: PickerOption;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -348,8 +352,8 @@ function Picker({ label, icon, current, options, extra, custom, none }: {
         <div role="menu" aria-label={label} className="absolute top-full left-0 z-40 mt-1 flex w-max flex-col gap-1.5 rounded-xl border bg-popover p-1.5 shadow-xl">
           <div className="flex items-center gap-1">
             {options.map((option) => swatchButton(option, "size-8"))}
-            <span className="mx-0.5 h-6 w-px bg-border" aria-hidden />
-            {swatchButton(none, "size-8 text-muted-foreground hover:text-foreground [&_svg]:size-4")}
+            {none && <span className="mx-0.5 h-6 w-px bg-border" aria-hidden />}
+            {none && swatchButton(none, "size-8 text-muted-foreground hover:text-foreground [&_svg]:size-4")}
           </div>
           {extra && <div className="grid grid-cols-6 gap-1 border-t pt-1.5">{extra.map((option) => swatchButton(option, "size-7"))}</div>}
           {custom && <CustomColorRow custom={custom} close={() => setOpen(false)} />}
@@ -426,6 +430,30 @@ function ColorPicker({ editor, words, mark }: { editor: Editor; words: EditorStr
   );
 }
 
+/** A note's own colours: the default first, then four more; any other is picked or typed below them. */
+const NOTE_DEFAULT = "#6366f1";
+const NOTE_COLORS: [string, string][] = [["#eab308", "yellow"], ["#16a34a", "green"], ["#2563eb", "blue"], ["#db2777", "pink"]];
+
+/** The colour of the note the cursor is in. A note always has one: the default until another is chosen. */
+function NoteColorPicker({ editor, words }: { editor: Editor; words: EditorStrings }) {
+  const color = useEditorState({ editor, selector: ({ editor: current }) => String(current.getAttributes("note").color ?? "") });
+  const set = (value: string | null) => editor.chain().focus().updateAttributes("note", { color: value }).run();
+  const bar = (value: string) => <span className="h-5 w-5 rounded-md border-l-[4px]" style={{ borderColor: value, background: `${value}26` }} />;
+  return (
+    <Picker
+      label={words.noteColor.label}
+      icon={<StickyNoteIcon />}
+      current={color || NOTE_DEFAULT}
+      options={[
+        { id: "default", label: `${words.noteColor.default} · ${NOTE_DEFAULT.toUpperCase()}`, active: !color, pick: () => set(null), swatch: bar(NOTE_DEFAULT) },
+        ...NOTE_COLORS.map(([hex, name]) => ({ id: hex, label: `${words.colorPicker.names[name] ?? words.colors[name as HighlightColor] ?? name} · ${hex.toUpperCase()}`, active: color === hex, pick: () => set(hex), swatch: bar(hex) })),
+      ]}
+      extra={EXTRA_COLORS.map(([hex, name]) => ({ id: hex, label: `${words.colorPicker.names[name] ?? name} · ${hex.toUpperCase()}`, active: color === hex, pick: () => set(hex), swatch: bar(hex) }))}
+      custom={{ value: (color || NOTE_DEFAULT).toUpperCase(), apply: (hex) => set(hex.toLowerCase()), words: words.colorPicker }}
+    />
+  );
+}
+
 const BADGES = [
   { tone: "", color: "#0284c7", word: "plain" },
   { tone: "good", color: "#16a34a", word: "good" },
@@ -434,21 +462,25 @@ const BADGES = [
 
 /** The three badges ([[BOR]], [[+YANGI]], [[-x]]) in one picker. */
 function BadgePicker({ editor, words }: { editor: Editor; words: EditorStrings }) {
-  const active = useEditorState({ editor, selector: ({ editor: current }) => BADGES.map((badge) => current.isActive("badge", { tone: badge.tone })) });
-  const inUse = BADGES.find((_, index) => active[index]);
+  const tone = useEditorState({ editor, selector: ({ editor: current }) => (current.isActive("badge") ? String(current.getAttributes("badge").tone ?? "") : null) });
+  const set = (value: string) => editor.chain().focus().setMark("badge", { tone: value }).run();
+  const shown = BADGES.find((badge) => badge.tone === tone)?.color ?? (tone && /^#/.test(tone) ? tone : undefined);
+  const swatch = (color: string) => <TagIcon className="size-4!" style={{ color }} />;
   return (
     <Picker
       label={words.badges.label}
       icon={<TagIcon />}
-      current={inUse?.color}
-      options={BADGES.map((badge, index) => ({
+      current={shown}
+      // The default badge comes first: a badge always has a colour, so there is no "no colour".
+      options={BADGES.map((badge) => ({
         id: badge.word,
-        label: words.badges[badge.word],
-        active: active[index],
-        pick: () => editor.chain().focus().setMark("badge", { tone: badge.tone }).run(),
-        swatch: <TagIcon className="size-4!" style={{ color: badge.color }} />,
+        label: badge.word === "plain" ? `${words.badges.default} · ${badge.color.toUpperCase()}` : words.badges[badge.word],
+        active: tone === badge.tone,
+        pick: () => set(badge.tone),
+        swatch: swatch(badge.color),
       }))}
-      none={{ id: "none", label: words.colors.none, active: !inUse, pick: () => editor.chain().focus().unsetMark("badge").run(), swatch: <BanIcon /> }}
+      extra={EXTRA_COLORS.map(([hex, name]) => ({ id: hex, label: `${words.colorPicker.names[name] ?? name} · ${hex.toUpperCase()}`, active: tone === hex, pick: () => set(hex), swatch: swatch(hex) }))}
+      custom={{ value: (shown ?? BADGES[0].color).toUpperCase(), apply: (hex) => set(hex.toLowerCase()), words: words.colorPicker }}
     />
   );
 }
@@ -485,6 +517,7 @@ function Toolbar({ editor, schema, words, lang }: { editor: Editor; schema: Sche
     selector: ({ editor: current }) => ({
       marks: marks.map((mark) => mark.active(current)),
       table: current.isActive("table"),
+      note: current.isActive("note"),
       undo: current.can().undo(),
       redo: current.can().redo(),
     }),
@@ -495,6 +528,7 @@ function Toolbar({ editor, schema, words, lang }: { editor: Editor; schema: Sche
         <InsertMenu editor={editor} schema={schema} words={words} lang={lang} />
         <Sep />
         <BlockMenu editor={editor} words={words} />
+        {state.note && <NoteColorPicker editor={editor} words={words} />}
         <Sep />
         {marks.map((mark, index) => <ToolButton key={mark.label} label={mark.label} active={state.marks[index]} onPress={() => mark.run(editor)}>{mark.icon}</ToolButton>)}
         <Sep />

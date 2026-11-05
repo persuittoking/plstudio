@@ -34,6 +34,9 @@ import { useLayout } from "@/app/hooks/use-layout";
 import { useSaveState } from "@/app/hooks/use-save-state";
 import { prepareCanvasSchema } from "../geometry";
 import { useWorkerDDL } from "./use-worker-ddl";
+import { DialectContext } from "./dialect-context";
+import { dialectOf, toPostgresColumn } from "@/app/lib/dialect";
+import { postgresIssues } from "@/app/lib/postgres-issues";
 
 export type SchemaProviderProps = {
   initialSchema: Schema;
@@ -450,7 +453,13 @@ export function SchemaProvider({
       commitWith((current) => ({
         ...current,
         tables: current.tables.map((table) =>
-          table.id === tableId ? applyColumnTemplate(table, template) : table,
+          table.id === tableId
+            ? applyColumnTemplate(
+                table,
+                // A PostgreSQL diagram takes a template's Oracle types as their PostgreSQL twins.
+                dialectOf(current) === "postgres" ? { ...template, columns: template.columns.map((column) => toPostgresColumn(column)) } : template,
+              )
+            : table,
         ),
       })),
     [commitWith],
@@ -501,8 +510,9 @@ export function SchemaProvider({
   );
 
   const deferredSchema = useDeferredValue(schema);
+  // A PostgreSQL diagram is checked as PostgreSQL will see it; see `postgresIssues`.
   const issues = useMemo(
-    () => validateSchema(deferredSchema),
+    () => (dialectOf(deferredSchema) === "postgres" ? postgresIssues(deferredSchema) : validateSchema(deferredSchema)),
     [deferredSchema],
   );
   const errors = useMemo(
@@ -600,6 +610,8 @@ export function SchemaProvider({
     ],
   );
   return (
-    <SchemaContext.Provider value={value}>{children}</SchemaContext.Provider>
+    <SchemaContext.Provider value={value}>
+      <DialectContext.Provider value={dialectOf(schema)}>{children}</DialectContext.Provider>
+    </SchemaContext.Provider>
   );
 }

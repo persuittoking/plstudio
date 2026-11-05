@@ -25,6 +25,12 @@ export const ORACLE_TYPES = [
 
 export type OracleType = (typeof ORACLE_TYPES)[number];
 export type KeyStrategy = "none" | "sequence-trigger" | "identity";
+/**
+ * The database a diagram is designed for. Columns are always stored as Oracle
+ * types; a PostgreSQL diagram shows and picks them by their PostgreSQL names
+ * (`app/lib/dialect.ts`), so every generator keeps working and both exports stay available.
+ */
+export type Dialect = "oracle" | "postgres";
 export type MemoColor = "yellow" | "blue" | "green" | "pink";
 export type GroupColor = "orange" | "blue" | "green" | "purple" | "pink";
 
@@ -59,6 +65,13 @@ export type Column = {
   check: string;
   comment?: string;
   fk: ForeignKeyRef | null;
+  /**
+   * A PostgreSQL type picked with no Oracle twin -- `jsonb`, `boolean`, `inet`.
+   * `type` keeps the closest Oracle type, so the Oracle DDL stays valid; this
+   * counts only while `type` is still the one that choice is stored as
+   * (`app/lib/pg-types.ts`). Absent for every other column.
+   */
+  postgresType?: string;
 };
 
 /**
@@ -173,6 +186,8 @@ export type Schema = {
    * the blocks `app/lib/documentation.ts` adds. Absent and empty mean the same thing.
    */
   documentation?: string;
+  /** Absent means Oracle, the database every diagram before this field was made for. */
+  dialect?: Dialect;
   updatedAt?: string;
 };
 
@@ -405,6 +420,7 @@ export function normalizeColumnTemplates(value: unknown): ColumnTemplate[] {
         pk: column.pk === true,
         unique: column.unique === true,
         ...(typeof column.comment === "string" && column.comment ? { comment: column.comment } : {}),
+        ...(typeof column.postgresType === "string" && column.postgresType ? { postgresType: column.postgresType } : {}),
       }];
     });
     return columns.length ? [{ id: template.id, name: typeof template.name === "string" && template.name.trim() ? template.name : "Untitled template", columns }] : [];
@@ -435,10 +451,11 @@ export function makeDemoSchema(): Schema {
   };
 }
 
-export function makeEmptySchema(name = "Untitled Diagram", id = nextId("schema")): Schema {
+export function makeEmptySchema(name = "Untitled Diagram", id = nextId("schema"), dialect: Dialect = "oracle"): Schema {
   return {
     id,
     name,
+    ...(dialect === "postgres" ? { dialect } : {}),
     revision: 1,
     schemaFormatVersion: SCHEMA_FORMAT_VERSION,
     tables: [],
@@ -604,7 +621,11 @@ function contentWidth(table: WidthInput) {
   const header = HEADER_CHROME + tag + Math.max(sansWidth(table.name.trim().toUpperCase(), 16), sansWidth(table.name.trim().toLowerCase(), 14));
   const rows = (table.columns ?? []).map((column) => {
     const icons = [column.pk, column.fk, (column.unique || grouped.has(column.id)) && !column.pk].filter(Boolean).length;
-    const type = monoWidth(typeString(column), 12);
+    // Room for the type under either database's name: PostgreSQL's `double precision` is the one longer than Oracle's.
+    const type = Math.max(
+      monoWidth(column.type === "BINARY_DOUBLE" || column.type === "FLOAT" ? "double precision" : typeString(column), 12),
+      monoWidth(column.postgresType ? `${column.postgresType}(${column.size})` : "", 12),
+    );
     return Math.max(
       ROW_CHROME + sansWidth(column.name.toUpperCase(), 14) + icons * ROW_ICON + type,
       DOCUMENT_ROW_CHROME + monoWidth(column.name, 11.5) + type,

@@ -58,7 +58,7 @@ export const EDITOR_CSS = `
 .doc-editor .editor-chip-button:hover{color:var(--text)}
 .doc-editor .editor-diagram-source textarea{width:100%;box-sizing:border-box;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 12px;resize:vertical;outline:none}
 .doc-editor .editor-diagram-source textarea:focus{border-color:var(--accent)}
-.doc-editor .editor-diagram-source .note{margin:6px 0 0}
+.doc-editor .editor-diagram-source .note{margin:6px 0 0;padding:0;border:0;background:none;font-size:13px;color:var(--muted)}
 
 /* block handle */
 .doc-editor .doc-handle{display:flex;gap:2px;position:relative;margin-right:6px}

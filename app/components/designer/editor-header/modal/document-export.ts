@@ -1,7 +1,14 @@
 import { documentHtmlFile, type RenderedDocument } from "@/app/lib/documentation";
 
-/** The width a document is laid out at for the PNG: the page's 860px column plus its padding. */
-export const DOCUMENT_IMAGE_WIDTH = 940;
+/**
+ * The width a document is laid out at for the SVG and the PNG. Wider than the
+ * 860px reading column of the HTML and PDF: a picture is looked at, often on a
+ * wide screen, and the ER diagram and the tables get the room to be read.
+ */
+export const DOCUMENT_IMAGE_WIDTH = 1400;
+
+/** The page let out to the image's width. */
+const wide = (rendered: RenderedDocument): RenderedDocument => ({ ...rendered, css: `${rendered.css}\n.doc .page{max-width:none}` });
 
 /** The page's full height at `width`, laid out by the browser in a throwaway frame. */
 function measureHeight(file: string, width: number): Promise<number> {
@@ -27,7 +34,8 @@ const escapeXml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, 
  * `foreignObject`. Browsers open it as the page it is; editors that draw SVG
  * without HTML (Inkscape, Illustrator) do not, which is what the PNG is for.
  */
-export async function documentToSvg(rendered: RenderedDocument, width = DOCUMENT_IMAGE_WIDTH): Promise<{ svg: string; width: number; height: number }> {
+export async function documentToSvg(page: RenderedDocument, width = DOCUMENT_IMAGE_WIDTH): Promise<{ svg: string; width: number; height: number }> {
+  const rendered = wide(page);
   const height = await measureHeight(documentHtmlFile(rendered), width);
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,

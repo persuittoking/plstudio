@@ -14,6 +14,8 @@
  * the record would defeat the memo it is here to enable.
  */
 
+import { useDialect } from "@/app/components/designer/context/dialect-context";
+import { typeName } from "@/app/lib/dialect";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { CopyIcon, CopyPlusIcon, FingerprintIcon, GitMergeIcon, GripVerticalIcon, KeyRoundIcon, LinkIcon, ListPlusIcon, MoveHorizontalIcon, PanelLeftOpenIcon, TargetIcon, Trash2Icon } from "lucide-react";
 import {
@@ -26,7 +28,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { HoverCard } from "@/components/ui/hover-card";
-import { DOCUMENT_HEADER_HEIGHT, TABLE_FIELD_HEIGHT, commentLines, inkOn, keyStrategyTag, tableHeaderHeight, tableHeight, typeString, uniqueGroupColumnIds, type CardStyle, type Column, type SchemaGroup, type Table } from "@/app/lib/schema";
+import { DOCUMENT_HEADER_HEIGHT, TABLE_FIELD_HEIGHT, commentLines, inkOn, keyStrategyTag, tableHeaderHeight, tableHeight, uniqueGroupColumnIds, type CardStyle, type Column, type SchemaGroup, type Table } from "@/app/lib/schema";
 import { typeColorVar } from "@/app/lib/datatype-color";
 import { ColumnCard, ShortcutKeys, TableSummaryCard } from "../primitives";
 
@@ -66,6 +68,8 @@ const ColumnRow = memo(function ColumnRow({
   onGrabRow?: (event: ReactPointerEvent<HTMLButtonElement>, columnId: string, columnIndex: number) => void;
   onRowKeyDown?: (event: KeyboardEvent<HTMLButtonElement>, columnId: string, columnIndex: number) => void;
 }) {
+  const dialect = useDialect();
+  const type = typeName(column, dialect);
   return (
     <HoverCard
       className="table-row"
@@ -112,7 +116,7 @@ const ColumnRow = memo(function ColumnRow({
           />
         )}
         <span className="row-type" style={{ color: typeColorVar(column.type) }}>
-          {isDocument ? typeString(column).toLowerCase() : typeString(column)}
+          {isDocument || dialect === "postgres" ? type.toLowerCase() : type}
         </span>
         {/* After the type, as an optional is written (`String?`), and in a slot
             that is always there: every type then ends on the same x, and the

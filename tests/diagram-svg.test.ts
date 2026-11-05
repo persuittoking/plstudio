@@ -126,4 +126,14 @@ describe("renderDiagramSVG", () => {
     expect(svg).toContain("2 tables · 1 relationship");
     expect(svg).toContain("Foreign key (many → one)");
   });
+
+  it("for the Document, ends with a key under the diagram and leaves the name out", () => {
+    const svg = renderDiagramSVG(normalizeRelationships(makeDemoSchema()), { key: "bottom" });
+    expect(svg).not.toContain(">Oracle PL/SQL Workspace</text>");
+    expect(svg).toContain("2 tables · 1 relationship");
+    expect(svg).toContain("Foreign key (many → one)");
+    const y = (label: string) => Number(svg.match(new RegExp(`<text x="[\\d.-]+" y="([\\d.-]+)"[^>]*>${label}<`))?.[1]);
+    expect(y("Primary key")).toBeGreaterThan(y("enrollment"));
+    expect(y("Primary key")).toBeGreaterThan(y("student"));
+  });
 });

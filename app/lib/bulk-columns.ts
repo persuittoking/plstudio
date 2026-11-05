@@ -17,7 +17,7 @@ export type ColumnFilter = {
   tableId?: string;
 };
 
-export type BulkColumnPatch = Partial<Pick<Column, "type" | "size" | "notNull" | "defaultValue">>;
+export type BulkColumnPatch = Partial<Pick<Column, "type" | "size" | "notNull" | "defaultValue" | "postgresType">>;
 
 export type RenameOptions = { regex?: boolean; caseSensitive?: boolean };
 
