@@ -1,15 +1,15 @@
 "use client";
 
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { CheckIcon, CopyIcon, DownloadIcon, FolderOpenIcon, XIcon } from "lucide-react";
 import { generateDDL, generateDML, generateMermaidER } from "@/app/lib/generators";
 import { generateMigration } from "@/app/lib/migration";
 import { parseCreateTable } from "@/app/lib/parser";
 import { exportSchemaJson, parseSchemaJson } from "@/app/lib/schema-json";
-import { documentTemplate } from "@/app/lib/documentation";
+import { draftDocument } from "@/app/lib/document-draft";
 import { renderDiagramSVG, type DiagramTheme } from "../../diagram-svg";
-import { DocumentTab } from "./document-tab";
 import { svgToPng } from "./svg-to-png";
 import type { Schema } from "@/app/lib/schema";
 import type { ValidationIssue } from "@/app/lib/validation";
@@ -19,6 +19,9 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { highlightJson, highlightMermaid, highlightSql } from "../../highlight";
+
+// The Document tab carries the rich-text editor and its highlighters: they load when it is first opened, not with every export.
+const DocumentTab = dynamic(() => import("./document-tab").then((module) => module.DocumentTab), { ssr: false });
 
 export type ExportTab = "ddl" | "dml" | "migration" | "mermaid" | "json" | "image" | "document";
 
@@ -70,7 +73,8 @@ export const ExportModal = ({
   baseline: MigrationBaseline | null;
   onBaselineChange: (baseline: MigrationBaseline | null) => void;
   readOnly: boolean;
-  onDocumentationChange: (text: string) => void;
+  /** Rewrites the document from the text it holds now, so an edit can be merged onto a collaborator's. */
+  onDocumentationChange: (update: (current: string) => string) => void;
 }) => {
   const [copied, setCopied] = useState(false);
   const [baselineError, setBaselineError] = useState<string | null>(null);
@@ -118,7 +122,7 @@ export const ExportModal = ({
             : isImage
               ? svg
               : isDocument
-                ? (schema.documentation?.trim() ? schema.documentation : documentTemplate(schema))
+                ? (schema.documentation?.trim() ? schema.documentation : draftDocument(schema))
                 : json;
 
   const openBaseline = async (event: ChangeEvent<HTMLInputElement>) => {

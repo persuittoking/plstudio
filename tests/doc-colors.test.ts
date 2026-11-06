@@ -25,6 +25,20 @@ describe("colours by code", () => {
       `<mark class="hl custom" style="background:#ff880059">a</mark> <span class="tc custom" style="color:#0055aa">b</span> <mark class="hl green">c</mark>`);
   });
 
+  it("keeps a yellow mark yellow when its words start like a tone", () => {
+    for (const mark of ["highlight", "textColor"] as const) {
+      const source = inlineText([{ type: "text", text: "-1", marks: [{ type: mark, attrs: { color: "yellow" } }] }]);
+      expect(inlineNodes(source)).toEqual([{ type: "text", text: "-1", marks: [{ type: mark, attrs: { color: "yellow" } }] }]);
+    }
+    expect(inline("=={yellow}+998==")).toBe(`<mark class="hl yellow">+998</mark>`);
+  });
+
+  it("keeps = and ! inside marked words", () => {
+    for (const source of ["!!Warning!!!", "==a = b==", "==!!-Stop!!!==", "!!x != y!!"]) expect(inlineText(inlineNodes(source))).toBe(source);
+    expect(inlineNodes("!!Warning!!!")[0].text).toBe("Warning!");
+    expect(inline("!!Warning!!!")).toBe(`<span class="tc yellow">Warning!</span>`);
+  });
+
   it("survives the editor and back, nested too", () => {
     const source = "Oddiy =={#ff8800}to'q sariq== va !!{#6366f1}indigo!!, ==!!{#ef4444}ikkalasi!!== ham.";
     const nodes = inlineNodes(source);

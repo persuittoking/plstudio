@@ -17,6 +17,9 @@ import { PRESET_COLORS, highlightBackground, isHexColor, type PresetColor } from
 import { normalizeIdentifier, type Schema } from "@/app/lib/schema";
 import { editorStrings } from "./editor-i18n";
 import { renderMermaidDiagram } from "../mermaid-render";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 /**
  * The Document editor's vocabulary: Tiptap's paragraphs, headings, lists,
@@ -216,9 +219,11 @@ function CardView({ node, getPos, editor, deleteNode }: ReactNodeViewProps) {
   return (
     <NodeViewWrapper className="card editor-card">
       {!readOnly && (
-        <button type="button" contentEditable={false} className="editor-chip-button card-remove" aria-label={words.removeCard} title={words.removeCard} onClick={remove}>
-          <XIcon />
-        </button>
+        <span contentEditable={false} className="card-remove">
+          <Button variant="ghost" size="icon-xs" aria-label={words.removeCard} onPress={remove}>
+            <XIcon />
+          </Button>
+        </span>
       )}
       <NodeViewContent className="card-body" data-kind={node.type.name} />
     </NodeViewWrapper>
@@ -239,9 +244,12 @@ const cardGroupView = (stats: boolean) =>
       <NodeViewWrapper className="editor-cards">
         <NodeViewContent className={stats ? "cards stats" : "cards"} />
         {!readOnly && (
-          <button type="button" contentEditable={false} className="editor-add-card" onClick={add}>
-            <PlusIcon /> {editorStrings(lang).nodes.addCard}
-          </button>
+          <span contentEditable={false} className="editor-add-card block">
+            <Button variant="outline" size="xs" onPress={add}>
+              <PlusIcon data-icon="inline-start" />
+              {editorStrings(lang).nodes.addCard}
+            </Button>
+          </span>
         )}
       </NodeViewWrapper>
     );
@@ -297,16 +305,18 @@ function DiagramView({ node, updateAttributes, selected }: ReactNodeViewProps) {
       <div className="editor-atom-bar">
         <span>{words.diagram}</span>
         {!readOnly && (
-          <button type="button" className="editor-chip-button" onClick={() => setEditing(!editing)}>
-            <PencilIcon /> {editing ? words.done : words.edit}
-          </button>
+          <Button variant="outline" size="xs" onPress={() => setEditing(!editing)}>
+            <PencilIcon data-icon="inline-start" />
+            {editing ? words.done : words.edit}
+          </Button>
         )}
       </div>
       <DiagramFigure source={source} theme={theme} />
       {editing && !readOnly && (
         <div className="editor-diagram-source">
-          <textarea
+          <Textarea
             aria-label="Diagram code"
+            className="field-sizing-fixed resize-y font-mono"
             value={source}
             spellCheck={false}
             rows={Math.min(14, Math.max(4, source.split("\n").length + 1))}
@@ -349,10 +359,13 @@ function SchemaBlockView({ node, updateAttributes, selected }: ReactNodeViewProp
       <div className="editor-atom-bar">
         <span>{words.schema[kind]}</span>
         {kind === "columns" && (
-          <select aria-label="Table" value={table} disabled={readOnly} onChange={(event) => updateAttributes({ table: event.target.value })}>
-            {!known && <option value={table}>{table || words.chooseTable}</option>}
-            {schema.tables.map((item) => <option key={item.id} value={normalizeIdentifier(item.name)}>{normalizeIdentifier(item.name)}</option>)}
-          </select>
+          <Select aria-label="Table" selectedKey={table} isDisabled={readOnly} onSelectionChange={(key) => updateAttributes({ table: String(key) })}>
+            <SelectTrigger size="sm" className="font-mono normal-case tracking-normal"><SelectValue /></SelectTrigger>
+            <SelectContent className="code-menu"><SelectGroup>
+              {!known && <SelectItem id={table}>{table || words.chooseTable}</SelectItem>}
+              {schema.tables.map((item) => <SelectItem key={item.id} id={normalizeIdentifier(item.name)}>{normalizeIdentifier(item.name)}</SelectItem>)}
+            </SelectGroup></SelectContent>
+          </Select>
         )}
       </div>
       {kind === "er" ? (

@@ -12,6 +12,7 @@ import {
   type SchemaGroup,
   type Table,
 } from "@/app/lib/schema";
+import { spliceOf } from "@/app/lib/text-merge";
 
 /**
  * The shared document mirrors `Schema` one-to-one: every domain collection is a
@@ -31,6 +32,13 @@ export type YSchemaRoot = {
   memos: Y.Array<Y.Map<unknown>>;
   queries: Y.Array<Y.Map<unknown>>;
   columnTemplates: Y.Array<Y.Map<unknown>>;
+  /**
+   * The written document (`Schema.documentation`) as text, so two people typing
+   * in different paragraphs both keep their words. Documents from before it
+   * hold the whole string in `meta.documentation`, read until the next write
+   * moves it here.
+   */
+  documentation: Y.Text;
 };
 
 export const schemaRoot = (ydoc: Y.Doc): YSchemaRoot => ({
@@ -41,12 +49,13 @@ export const schemaRoot = (ydoc: Y.Doc): YSchemaRoot => ({
   memos: ydoc.getArray<Y.Map<unknown>>("memos"),
   queries: ydoc.getArray<Y.Map<unknown>>("queries"),
   columnTemplates: ydoc.getArray<Y.Map<unknown>>("columnTemplates"),
+  documentation: ydoc.getText("documentation"),
 });
 
 /** A doc nobody has seeded yet. Guards against two clients both seeding on first open. */
 export const isEmptyDoc = (ydoc: Y.Doc) => {
   const root = schemaRoot(ydoc);
-  return root.meta.size === 0 && root.tables.length === 0 && root.groups.length === 0 && root.memos.length === 0 && root.relationships.length === 0 && root.queries.length === 0 && root.columnTemplates.length === 0;
+  return root.meta.size === 0 && root.tables.length === 0 && root.groups.length === 0 && root.memos.length === 0 && root.relationships.length === 0 && root.queries.length === 0 && root.columnTemplates.length === 0 && root.documentation.length === 0;
 };
 
 /**
@@ -73,6 +82,13 @@ const same = (a: unknown, b: unknown) => deepEqual(a ?? null, b ?? null);
 function setIfChanged(map: Y.Map<unknown>, key: string, value: unknown) {
   if (value === undefined) { if (map.has(key)) map.delete(key); return; }
   if (!same(map.get(key), value)) map.set(key, value);
+}
+
+/** Writes only the stretch that changed, so a concurrent edit elsewhere in the text survives the merge. */
+function writeText(text: Y.Text, next: string) {
+  const { at, remove, insert } = spliceOf(text.toString(), next);
+  if (remove) text.delete(at, remove);
+  if (insert) text.insert(at, insert);
 }
 
 const writeFields = (map: Y.Map<unknown>, fields: Record<string, unknown>) =>
@@ -191,13 +207,14 @@ const writeColumnTemplate = (map: Y.Map<unknown>, template: ColumnTemplate) =>
 export function applySchemaToYDoc(ydoc: Y.Doc, next: Schema, origin?: unknown) {
   const root = schemaRoot(ydoc);
   ydoc.transact(() => {
-    writeFields(root.meta, { id: next.id, name: next.name, schemaFormatVersion: next.schemaFormatVersion ?? SCHEMA_FORMAT_VERSION, documentation: next.documentation || undefined, lintDisabled: next.lint?.disabled.length ? next.lint.disabled : undefined });
+    writeFields(root.meta, { id: next.id, name: next.name, schemaFormatVersion: next.schemaFormatVersion ?? SCHEMA_FORMAT_VERSION, documentation: undefined, lintDisabled: next.lint?.disabled.length ? next.lint.disabled : undefined });
     reconcileList(root.tables, next.tables, writeTable);
     reconcileList(root.relationships, next.relationships ?? [], writeRelationship);
     reconcileList(root.groups, next.groups ?? [], writeGroup);
     reconcileList(root.memos, next.memos ?? [], writeMemo);
     reconcileList(root.queries, next.queries ?? [], writeQuery);
     reconcileList(root.columnTemplates, next.columnTemplates ?? [], writeColumnTemplate);
+    writeText(root.documentation, next.documentation ?? "");
   }, origin);
   return ydoc;
 }
@@ -279,6 +296,27 @@ const readTable = (map: Y.Map<unknown>, cache?: ReadCache): Table => {
 };
 
 /**
+ * Moves a document from before `YSchemaRoot.documentation` (the whole string
+ * in `meta`) into its text. The collab server calls it once, as a room loads:
+ * done by each client instead, two of them could insert the same text twice.
+ */
+export function migrateLegacyDocumentation(ydoc: Y.Doc) {
+  const root = schemaRoot(ydoc);
+  const legacy = root.meta.get("documentation");
+  if (!root.meta.has("documentation")) return;
+  ydoc.transact(() => {
+    if (!root.documentation.length && typeof legacy === "string") root.documentation.insert(0, legacy);
+    root.meta.delete("documentation");
+  });
+}
+
+const readDocumentation = (root: YSchemaRoot) => {
+  const legacy = root.meta.get("documentation");
+  const text = root.documentation.length ? root.documentation.toString() : typeof legacy === "string" ? legacy : "";
+  return text ? { documentation: text } : {};
+};
+
+/**
  * Projects the shared document back into the plain `Schema` the whole domain
  * layer already speaks, so validation, generation and export stay untouched.
  * `id` and `revision` are server-owned and may be supplied by the caller.
@@ -302,7 +340,7 @@ export function schemaFromYDoc(
     memos: read<Memo>(root.memos, MEMO_KEYS),
     queries: read<SavedQuery>(root.queries, QUERY_KEYS),
     columnTemplates: read<ColumnTemplate>(root.columnTemplates, TEMPLATE_KEYS),
-    ...(typeof root.meta.get("documentation") === "string" ? { documentation: root.meta.get("documentation") as string } : {}),
+    ...readDocumentation(root),
     ...normalizeLint({ disabled: root.meta.get("lintDisabled") }),
   };
 }

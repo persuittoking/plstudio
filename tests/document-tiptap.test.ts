@@ -17,6 +17,11 @@ describe("inline marks", () => {
     expect(inlineNodes("[[+YANGI]]")[0]).toEqual({ type: "text", text: "YANGI", marks: [{ type: "badge", attrs: { tone: "good" } }] });
   });
   it("does not read a multiplication as italic", () => expect(inlineText(inlineNodes("a * b * c"))).toBe("a * b * c"));
+  it("reads marks inside italic, and bold italic together", () => {
+    expect(inlineNodes("*==x==*")).toEqual([{ type: "text", text: "x", marks: [{ type: "highlight", attrs: { color: "yellow" } }, { type: "italic" }] }]);
+    expect(inlineNodes("***x***")).toEqual([{ type: "text", text: "x", marks: [{ type: "italic" }, { type: "bold" }] }]);
+    for (const source of ["*==x==* and *!!+y!!*", "a ***both*** b"]) expect(inlineText(inlineNodes(source))).toBe(source);
+  });
 });
 
 describe("text <-> Tiptap", () => {

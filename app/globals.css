@@ -4565,6 +4565,81 @@ input:-webkit-autofill:focus-visible {
 }
 
 /*
+ * The Document tab's editor (`editor-header/modal/document-editor/`). Two kinds
+ * of rule live here. Inside `.doc` the editor draws the exported page, so its
+ * content rules use the page's own variables (`--accent`, `--border`, `--panel`,
+ * set by `documentCss` in `app/lib/documentation.ts`) and follow the page's
+ * Light/Dark rather than the app's. The editor's own chrome -- the block handle,
+ * the completion list -- uses the app's roles like everything else.
+ */
+.doc.doc-editor { padding: 28px 32px 40px 72px; }
+.doc-editor .page { max-width: 860px; }
+.doc-editor .doc-editor-host { position: relative; }
+.doc-editor .ProseMirror { outline: none; min-height: 40vh; caret-color: var(--accent); }
+.doc-editor .ProseMirror > * + * { margin-top: 0; }
+.doc-editor .ProseMirror .is-empty::before { content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: var(--muted); opacity: 0.7; }
+.doc-editor .ProseMirror ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.doc-editor .ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.doc-editor .ProseMirror hr.ProseMirror-selectednode { outline-offset: 6px; }
+.doc-editor .ProseMirror-gapcursor:after { border-top-color: var(--text); }
+.doc-editor ul,
+.doc-editor ol { padding-left: 24px; }
+.doc-editor li > p { margin: 0; }
+
+/* Tables: Tiptap wraps them, so the page's .table frame goes on the wrapper. */
+.doc-editor .tableWrapper { border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; margin: 0 0 18px; }
+.doc-editor table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; table-layout: fixed; }
+.doc-editor th,
+.doc-editor td { position: relative; padding: 9px 12px; vertical-align: top; border-top: 1px solid var(--border); border-left: 1px solid var(--border); min-width: 80px; }
+.doc-editor tr:first-child > * { border-top: 0; }
+.doc-editor tr > *:first-child { border-left: 0; }
+.doc-editor th { background: var(--panel); color: var(--muted); text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; }
+.doc-editor th p,
+.doc-editor td p { margin: 0; }
+.doc-editor .selectedCell::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--accent) 18%, transparent); pointer-events: none; }
+
+/* Code */
+.doc-editor .editor-code { position: relative; margin: 0 0 16px; }
+.doc-editor .editor-code pre { margin: 0; padding-top: 30px; }
+.doc-editor .editor-code-language { position: absolute; top: 8px; right: 12px; z-index: 1; font: 600 10.5px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); user-select: none; pointer-events: none; }
+
+/* Cards. A React node view puts its children in an inner element, so the grid goes on that. */
+.doc-editor .editor-cards { margin: 0 0 20px; }
+.doc-editor .editor-cards .cards { display: block; margin: 0; }
+.doc-editor .editor-cards .cards > [data-node-view-content-react] { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.doc-editor .editor-card { position: relative; height: 100%; }
+.doc-editor .card-body h4 { margin: 0 0 6px; padding-right: 18px; }
+.doc-editor .card-body .lead { min-height: 1.2em; }
+.doc-editor .card-body .card-text { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.doc-editor .card-body .value { font: 700 24px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--warm); margin: 0 0 6px; }
+.doc-editor .card-remove { position: absolute; top: 4px; right: 4px; opacity: 0; transition: opacity 0.15s; }
+.doc-editor .editor-card:hover .card-remove,
+.doc-editor .editor-card:focus-within .card-remove { opacity: 1; }
+.doc-editor .editor-add-card { margin-top: 8px; }
+
+/* Atoms: diagrams and schema blocks. */
+.doc-editor .editor-atom { margin: 0 0 16px; border-radius: 10px; position: relative; }
+.doc-editor .editor-atom.is-selected { outline: 2px solid var(--accent); outline-offset: 3px; }
+.doc-editor .editor-atom-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.doc-editor .editor-diagram-source .note { margin: 6px 0 0; }
+
+/* The block handle: the app's chrome, beside the page. */
+.doc-editor .doc-handle { display: flex; gap: 2px; margin-right: 6px; }
+.doc-editor .doc-handle-button { color: var(--label-2); }
+
+/* The completion list's kind marks, in the system colours. */
+.doc-complete-label { font-family: var(--font-mono), ui-monospace, monospace; font-size: 12.5px; }
+.doc-complete-kind { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; border-radius: 5px; font: 700 10px/1 ui-sans-serif, system-ui, sans-serif; color: var(--primary-foreground); }
+.doc-complete-kind.is-table { background: var(--primary); }
+.doc-complete-kind.is-column { background: var(--system-green); }
+.doc-complete-kind.is-word { background: var(--system-gray); }
+.doc-complete-kind.is-keyword { background: var(--system-orange); }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-editor .card-remove { transition: none; }
+}
+
+/*
  * Reduced effects. `data-effects` is stamped on <html> before first paint
  * (`app/lib/effects.ts`): by the device when the setting is System, otherwise
  * by the setting. A blurred material re-reads and re-blurs whatever is behind

@@ -6,7 +6,7 @@ import { Database } from "@hocuspocus/extension-database";
 import crossws from "crossws/adapters/node";
 import { readProject, readYDoc, updateProject, withProjectLock, writeYDoc } from "@/db/file-store";
 import { projectIdFrom, verifyCollabToken } from "@/app/lib/collab/token";
-import { schemaFromYDoc } from "@/app/lib/collab/ydoc";
+import { migrateLegacyDocumentation, schemaFromYDoc } from "@/app/lib/collab/ydoc";
 import { SCHEMA_FORMAT_VERSION, type Schema } from "@/app/lib/schema";
 
 /** Same-origin path the browser connects to; see `collabUrl()` in `useCollaborativeSchema`. */
@@ -32,6 +32,11 @@ export function createCollab(secret: string) {
       // even against a patched browser.
       connectionConfig.readOnly = claims.readOnly;
       return { userId: claims.sub, name: claims.name, image: claims.image, readOnly: claims.readOnly };
+    },
+
+    // Before any client has the room: see `migrateLegacyDocumentation`.
+    async afterLoadDocument({ document }) {
+      migrateLegacyDocumentation(document);
     },
 
     extensions: [
