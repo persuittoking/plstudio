@@ -1,5 +1,5 @@
 export const ORACLE_VERSION = "12.2+" as const;
-export const SCHEMA_FORMAT_VERSION = 9 as const;
+export const SCHEMA_FORMAT_VERSION = 10 as const;
 
 export const ORACLE_TYPES = [
   "VARCHAR2",
@@ -188,6 +188,8 @@ export type Schema = {
   documentation?: string;
   /** Absent means Oracle, the database every diagram before this field was made for. */
   dialect?: Dialect;
+  /** Project-wide lint settings: the `LINT_RULES` ids turned off. Absent means every rule is on. */
+  lint?: { disabled: string[] };
   updatedAt?: string;
 };
 
@@ -465,6 +467,13 @@ export function makeEmptySchema(name = "Untitled Diagram", id = nextId("schema")
     queries: [],
     columnTemplates: [],
   };
+}
+
+/** `{ lint }` when `value` turns any rule off, else nothing -- absent and empty mean the same, as with `documentation`. */
+export function normalizeLint(value: unknown): Pick<Schema, "lint"> {
+  const raw = value && typeof value === "object" ? (value as { disabled?: unknown }).disabled : undefined;
+  const disabled = Array.isArray(raw) ? [...new Set(raw.filter((id): id is string => typeof id === "string"))] : [];
+  return disabled.length ? { lint: { disabled } } : {};
 }
 
 export function normalizeIdentifier(value: string) {
