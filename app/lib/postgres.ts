@@ -46,6 +46,11 @@ const RESERVED = new Set(
 );
 const NAME_LIMIT = 63;
 
+/** Whether PostgreSQL reserves a name (case ignored), so a script must quote it everywhere. */
+export const isPgReserved = (name: string) => RESERVED.has(name.trim().toLowerCase());
+/** PostgreSQL's identifier limit, in bytes: longer names are cut. */
+export const PG_NAME_LIMIT = NAME_LIMIT;
+
 /** A name as PostgreSQL reads it: plain when it can be, quoted when it must be. */
 export function pgIdentifier(name: string) {
   return /^[a-z_][a-z0-9_$]*$/.test(name) && !RESERVED.has(name) ? name : `"${name.replace(/"/g, '""')}"`;
