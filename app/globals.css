@@ -1765,6 +1765,102 @@ body {
   font-size: var(--text-2xs);
 }
 
+/* ---- Packages tab ------------------------------------------------------
+   Code is code everywhere in the tab: monospace, never wrapped (a 100-column
+   separator line must scroll, not reflow), on the group's own surface. */
+.package-code[data-slot="textarea"] {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  max-height: 260px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: auto;
+  resize: none;
+  field-sizing: content;
+  tab-size: 2;
+}
+.package-code[data-slot="textarea"]:focus-visible {
+  background: var(--surface-1);
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--tint) 45%, transparent);
+}
+.query-item > .package-code[data-slot="textarea"] {
+  border-top: 0.5px solid var(--separator);
+}
+.package-preview.code {
+  max-height: 280px;
+  padding-left: 12px;
+  overflow: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+/* The kind picker reads as a tinted label, like the row actions beside it. */
+.package-kind {
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tint);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+.package-kind:hover {
+  background: color-mix(in srgb, var(--ink-1) 5%, transparent);
+}
+.package-kind:focus-visible {
+  outline: 2px solid var(--tint);
+  outline-offset: 1px;
+}
+.package-returns {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+.package-returns .inset-field {
+  width: 7rem;
+}
+.package-check {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--tint);
+  cursor: pointer;
+}
+.inset-row:has(> .package-check) {
+  cursor: pointer;
+}
+/* Feedback on the press, not the release. */
+.row-text-button:active,
+.package-kind:active {
+  transform: scale(0.97);
+  transition: transform 100ms ease-out;
+}
+.package-card:active {
+  cursor: grabbing;
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-text-button:active,
+  .package-kind:active {
+    transform: none;
+  }
+}
+
 /* Canvas space, so it rides the card; it straddles the corner rather than covering the name. */
 .index-suggestion {
   position: absolute;
@@ -2912,6 +3008,68 @@ body {
 .memo-card.selected {
   outline: 2px solid color-mix(in oklch, var(--primary) 72%, transparent);
   outline-offset: 3px;
+}
+.package-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.package-links line {
+  stroke: var(--separator);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.package-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  contain: layout paint style;
+  cursor: grab;
+  background: var(--material-regular);
+  color: var(--label);
+  border: 1.5px solid var(--separator);
+  border-radius: calc(var(--radius) * 10 / 14);
+  box-shadow: 0 6px 14px rgb(0 0 0 / 10%);
+  transform-origin: 0 0;
+  z-index: 2;
+}
+.package-card:hover,
+.package-card.selected {
+  box-shadow: 0 12px 22px rgb(0 0 0 / 16%);
+}
+.package-card.selected {
+  outline: 2px solid color-mix(in oklch, var(--primary) 72%, transparent);
+  outline-offset: 3px;
+}
+.package-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--separator);
+}
+.package-name,
+.package-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.package-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+.package-row-note {
+  flex: none;
+  color: var(--label-secondary);
 }
 .memo-toolbar {
   display: flex;
@@ -4562,6 +4720,81 @@ input:-webkit-autofill:focus-visible {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+}
+
+/*
+ * The Document tab's editor (`editor-header/modal/document-editor/`). Two kinds
+ * of rule live here. Inside `.doc` the editor draws the exported page, so its
+ * content rules use the page's own variables (`--accent`, `--border`, `--panel`,
+ * set by `documentCss` in `app/lib/documentation.ts`) and follow the page's
+ * Light/Dark rather than the app's. The editor's own chrome -- the block handle,
+ * the completion list -- uses the app's roles like everything else.
+ */
+.doc.doc-editor { padding: 28px 32px 40px 72px; }
+.doc-editor .page { max-width: 860px; }
+.doc-editor .doc-editor-host { position: relative; }
+.doc-editor .ProseMirror { outline: none; min-height: 40vh; caret-color: var(--accent); }
+.doc-editor .ProseMirror > * + * { margin-top: 0; }
+.doc-editor .ProseMirror .is-empty::before { content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: var(--muted); opacity: 0.7; }
+.doc-editor .ProseMirror ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.doc-editor .ProseMirror-selectednode { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.doc-editor .ProseMirror hr.ProseMirror-selectednode { outline-offset: 6px; }
+.doc-editor .ProseMirror-gapcursor:after { border-top-color: var(--text); }
+.doc-editor ul,
+.doc-editor ol { padding-left: 24px; }
+.doc-editor li > p { margin: 0; }
+
+/* Tables: Tiptap wraps them, so the page's .table frame goes on the wrapper. */
+.doc-editor .tableWrapper { border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; margin: 0 0 18px; }
+.doc-editor table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; table-layout: fixed; }
+.doc-editor th,
+.doc-editor td { position: relative; padding: 9px 12px; vertical-align: top; border-top: 1px solid var(--border); border-left: 1px solid var(--border); min-width: 80px; }
+.doc-editor tr:first-child > * { border-top: 0; }
+.doc-editor tr > *:first-child { border-left: 0; }
+.doc-editor th { background: var(--panel); color: var(--muted); text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; }
+.doc-editor th p,
+.doc-editor td p { margin: 0; }
+.doc-editor .selectedCell::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--accent) 18%, transparent); pointer-events: none; }
+
+/* Code */
+.doc-editor .editor-code { position: relative; margin: 0 0 16px; }
+.doc-editor .editor-code pre { margin: 0; padding-top: 30px; }
+.doc-editor .editor-code-language { position: absolute; top: 8px; right: 12px; z-index: 1; font: 600 10.5px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); user-select: none; pointer-events: none; }
+
+/* Cards. A React node view puts its children in an inner element, so the grid goes on that. */
+.doc-editor .editor-cards { margin: 0 0 20px; }
+.doc-editor .editor-cards .cards { display: block; margin: 0; }
+.doc-editor .editor-cards .cards > [data-node-view-content-react] { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.doc-editor .editor-card { position: relative; height: 100%; }
+.doc-editor .card-body h4 { margin: 0 0 6px; padding-right: 18px; }
+.doc-editor .card-body .lead { min-height: 1.2em; }
+.doc-editor .card-body .card-text { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+.doc-editor .card-body .value { font: 700 24px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--warm); margin: 0 0 6px; }
+.doc-editor .card-remove { position: absolute; top: 4px; right: 4px; opacity: 0; transition: opacity 0.15s; }
+.doc-editor .editor-card:hover .card-remove,
+.doc-editor .editor-card:focus-within .card-remove { opacity: 1; }
+.doc-editor .editor-add-card { margin-top: 8px; }
+
+/* Atoms: diagrams and schema blocks. */
+.doc-editor .editor-atom { margin: 0 0 16px; border-radius: 10px; position: relative; }
+.doc-editor .editor-atom.is-selected { outline: 2px solid var(--accent); outline-offset: 3px; }
+.doc-editor .editor-atom-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.doc-editor .editor-diagram-source .note { margin: 6px 0 0; padding: 0; border: 0; background: none; font-size: 13px; color: var(--muted); }
+
+/* The block handle: the app's chrome, beside the page. */
+.doc-editor .doc-handle { display: flex; gap: 2px; margin-right: 6px; }
+.doc-editor .doc-handle-button { color: var(--label-2); }
+
+/* The completion list's kind marks, in the system colours. */
+.doc-complete-label { font-family: var(--font-mono), ui-monospace, monospace; font-size: 12.5px; }
+.doc-complete-kind { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; border-radius: 5px; font: 700 10px/1 ui-sans-serif, system-ui, sans-serif; color: var(--primary-foreground); }
+.doc-complete-kind.is-table { background: var(--primary); }
+.doc-complete-kind.is-column { background: var(--system-green); }
+.doc-complete-kind.is-word { background: var(--system-gray); }
+.doc-complete-kind.is-keyword { background: var(--system-orange); }
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-editor .card-remove { transition: none; }
 }
 
 /*

@@ -71,6 +71,15 @@ export function validateSchema(schema: Schema): ValidationIssue[] {
   );
   issues.push(...duplicateIssues(schema.tables.map((table) => ({ value: table.name, label: `table ${table.name}`, tableId: table.id }))));
   issues.push(...duplicateIssues((schema.groups ?? []).map((group) => ({ value: group.name, label: `schema group ${group.name}` }))));
+  const packages = schema.packages ?? [];
+  issues.push(...duplicateIssues(packages.map((pkg) => ({ value: pkg.name, label: `package ${pkg.name}` }))));
+  packages.forEach((pkg) => {
+    issues.push(...identifierIssues(pkg.name, `Package ${pkg.name || "(unnamed)"}`));
+    pkg.procedures.forEach((proc) => {
+      issues.push(...identifierIssues(proc.name, `Subprogram ${proc.name || "(unnamed)"} in ${pkg.name || "(unnamed)"}`));
+      if (!proc.body.trim()) issues.push({ severity: "warning", message: `Subprogram ${proc.name || "(unnamed)"} in ${pkg.name || "(unnamed)"} has no body.` });
+    });
+  });
   (schema.groups ?? []).forEach((group) => {
     issues.push(...identifierIssues(group.name, `Schema group ${group.name}`));
   });

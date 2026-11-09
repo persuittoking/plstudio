@@ -42,8 +42,10 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { filterItems, insertGroups, type InsertItem } from "./commands";
 import { editorStrings, type EditorStrings } from "./editor-i18n";
@@ -51,7 +53,6 @@ import { EditorEnvironmentContext, HIGHLIGHT_COLORS, documentExtensions, type Hi
 import { CodeCompletion, acceptCompletion, completionKey, type CompletionState } from "./code-complete";
 import { TableColors, tableColorsKey } from "./table-colors";
 import { SlashCommand, type SlashBridge, type SlashState } from "./slash-command";
-import { EDITOR_CSS } from "./editor-css";
 
 /**
  * The Document tab's editor: Tiptap, styled by the exported page's own CSS so
@@ -99,7 +100,8 @@ export function DocumentEditor({
       const { state, index } = slashRef.current;
       if (!state) return false;
       const count = state.items.length;
-      if (event.key === "Escape") { bridge.close(); return true; }
+      // Every key the menu takes stops here: Escape would close the dialog around the editor, Tab move its focus on.
+      if (event.key === "Escape") { event.stopPropagation(); bridge.close(); return true; }
       if (!count) return false;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         const next = (index + (event.key === "ArrowDown" ? 1 : count - 1)) % count;
@@ -107,7 +109,7 @@ export function DocumentEditor({
         setSlashIndex(next);
         return true;
       }
-      if (event.key === "Enter" || event.key === "Tab") { state.select(state.items[index]); return true; }
+      if (event.key === "Enter" || event.key === "Tab") { event.stopPropagation(); state.select(state.items[index]); return true; }
       return false;
     },
     run: (editor: Editor, range: Range, item: InsertItem) => {
@@ -152,7 +154,8 @@ export function DocumentEditor({
 
   return (
     <EditorEnvironmentContext.Provider value={environment}>
-      <style>{documentCss(theme)}{EDITOR_CSS}</style>
+      {/* The exported page's own stylesheet, so the editor draws what is downloaded; the editor's chrome is in globals.css. */}
+      <style>{documentCss(theme)}</style>
       <div className="flex min-h-0 flex-col gap-2">
         {editor && !readOnly && <Toolbar editor={editor} schema={schema} words={words} lang={lang} />}
         <div className="relative min-h-0">
@@ -190,7 +193,7 @@ type BlockKind = { id: string; label: string; shortcut?: string; sample: ReactNo
 /** Turns the line into a block, out of any list first, so every kind can follow every other. */
 const become = (editor: Editor, type: string, attrs?: Record<string, unknown>) => editor.chain().focus().clearNodes().setNode(type, attrs).run();
 const calloutSample = (color: string, text: string) => (
-  <span className="block rounded-md border-l-[3px] px-2 py-0.5 text-[13px] font-medium" style={{ borderColor: color, background: `${color}1f` }}>{text}</span>
+  <span className="block rounded-md border-l-[3px] px-2 py-0.5 text-[13px] font-medium" style={{ borderColor: color, background: `color-mix(in srgb, ${color} 12%, transparent)` }}>{text}</span>
 );
 
 /** Every kind of line the text can be, each drawn as it looks on the page. */
@@ -203,7 +206,7 @@ const blockKinds = (words: EditorStrings): BlockKind[] => [
   })),
   { id: "kicker", label: words.blocks.kicker, sample: <span className="text-[11px] font-semibold tracking-wider text-primary uppercase" style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>{words.blocks.kicker}</span>, apply: (editor) => become(editor, "kicker"), active: (editor) => editor.isActive("kicker") },
   { id: "note", label: words.blocks.note, sample: <span className="text-[12.5px] text-muted-foreground">{words.blocks.note}</span>, apply: (editor) => become(editor, "note"), active: (editor) => editor.isActive("note") },
-  ...([["", words.blocks.info, "#0969da"], ["tip", words.blocks.tip, "#1a7f37"], ["warning", words.blocks.warning, "#9a6700"], ["danger", words.blocks.danger, "#cf222e"]] as const).map(([tone, label, color]): BlockKind => ({
+  ...([["", words.blocks.info, "var(--primary)"], ["tip", words.blocks.tip, "var(--system-green)"], ["warning", words.blocks.warning, "var(--system-orange)"], ["danger", words.blocks.danger, "var(--destructive)"]] as const).map(([tone, label, color]): BlockKind => ({
     id: `callout-${tone || "info"}`, label, sample: calloutSample(color, label),
     apply: (editor) => become(editor, "callout", { tone }), active: (editor) => editor.isActive("callout", { tone }),
   })),
@@ -221,60 +224,33 @@ function BlockMenu({ editor, words }: { editor: Editor; words: EditorStrings }) 
   const kinds = useMemo(() => blockKinds(words), [words]);
   const active = useEditorState({ editor, selector: ({ editor: current }) => kinds.map((kind) => kind.active(current)) });
   const current = kinds.find((_, index) => active[index]);
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (event: MouseEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); setOpen(false); } };
-    document.addEventListener("mousedown", away);
-    document.addEventListener("keydown", escape, true);
-    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", escape, true); };
-  }, [open]);
   const groups = [kinds.slice(0, 4), kinds.slice(4, 6), kinds.slice(6, 10), kinds.slice(10)];
   return (
-    <div ref={box} className="relative">
-      <button
-        type="button"
-        aria-label={words.blocks.label}
-        title={words.blocks.label}
-        aria-haspopup="true"
-        aria-expanded={open}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => setOpen((value) => !value)}
-        className={cn("flex h-7 min-w-[118px] items-center justify-between gap-1 rounded-lg px-2 text-sm hover:bg-(--fill-3)", open && "bg-(--fill-2)")}
-      >
+    <DropdownMenuTrigger>
+      <Button variant="ghost" size="sm" aria-label={words.blocks.label} className="min-w-[118px] justify-between">
         <span className="truncate">{current?.label ?? words.blocks.paragraph}</span>
-        <ChevronDownIcon className="size-3.5 opacity-60" />
-      </button>
-      {open && (
-        <div role="menu" aria-label={words.blocks.label} className="absolute top-full left-0 z-40 mt-1 max-h-[60vh] w-72 overflow-y-auto rounded-xl border bg-popover p-1 shadow-xl">
-          {groups.map((group, index) => (
-            <div key={index} className={cn(index > 0 && "mt-1 border-t pt-1")}>
-              {group.map((kind) => {
-                const on = active[kinds.indexOf(kind)];
-                return (
-                  <button
-                    key={kind.id}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={on}
-                    aria-label={kind.label}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => { kind.apply(editor); setOpen(false); }}
-                    className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-(--fill-3)", on && "bg-(--fill-2)")}
-                  >
-                    <CheckIcon className={cn("size-3.5 shrink-0", !on && "invisible")} aria-hidden />
-                    <span className="min-w-0 flex-1">{kind.sample}</span>
-                    {kind.shortcut && <kbd className="shrink-0 font-sans text-[11px] text-muted-foreground" style={{ fontFamily: "inherit" }}>{keys(kind.shortcut)}</kbd>}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+        <ChevronDownIcon data-icon="inline-end" className="opacity-60" />
+      </Button>
+      <DropdownMenu
+        aria-label={words.blocks.label}
+        className="max-h-[60vh] w-72"
+        selectionMode="single"
+        selectedKeys={current ? [current.id] : []}
+        onAction={(key) => kinds.find((kind) => kind.id === key)?.apply(editor)}
+      >
+        {groups.map((group, index) => (
+          <DropdownMenuGroup key={index}>
+            {index > 0 && <DropdownMenuSeparator />}
+            {group.map((kind) => (
+              <DropdownMenuItem key={kind.id} id={kind.id} textValue={kind.label}>
+                <span className="min-w-0 flex-1">{kind.sample}</span>
+                {kind.shortcut && <DropdownMenuShortcut>{keys(kind.shortcut)}</DropdownMenuShortcut>}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        ))}
+      </DropdownMenu>
+    </DropdownMenuTrigger>
   );
 }
 
@@ -285,7 +261,12 @@ const markButtons = (words: EditorStrings) => [
   { label: words.marks.code, icon: <CodeIcon />, run: (editor: Editor) => editor.chain().focus().toggleCode().run(), active: (editor: Editor) => editor.isActive("code") },
 ];
 
-/** The swatch colours, as on the page's light theme. */
+/**
+ * The swatch colours, as on the page's light theme. Hex on purpose: these are
+ * the document's colours, not the app's -- a chosen one is saved into the text
+ * as its code (`=={#ff8800}…==`) and drawn by the exported page, which cannot
+ * read the app's tokens.
+ */
 const SWATCH: Record<HighlightColor, string> = { yellow: "#facc15", green: "#34d399", blue: "#60a5fa", pink: "#f472b6" };
 /** The text-colour swatches, readable on the light toolbar. */
 const TEXT_SWATCH: Record<HighlightColor, string> = { yellow: "#d97706", green: "#16a34a", blue: "#2563eb", pink: "#db2777" };
@@ -316,38 +297,36 @@ function Picker({ label, icon, current, options, extra, custom, none }: {
   }, [open]);
   const choose = (option: PickerOption) => { option.pick(); setOpen(false); };
   const swatchButton = (option: PickerOption, size: string) => (
-    <button
+    <Button
       key={option.id}
-      type="button"
-      role="menuitemradio"
-      aria-checked={option.active}
-      title={option.label}
+      variant="ghost"
+      preventFocusOnPress
       aria-label={option.label}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => choose(option)}
-      className={cn("flex items-center justify-center rounded-lg hover:bg-(--fill-3)", size, option.active && "bg-(--fill-2) ring-1 ring-foreground/30")}
+      aria-pressed={option.active}
+      onPress={() => choose(option)}
+      className={cn("rounded-lg p-0", size, option.active && "bg-(--fill-2) ring-1 ring-foreground/30")}
     >
       {option.swatch}
-    </button>
+    </Button>
   );
   return (
     <div ref={box} className="relative">
-      <button
-        type="button"
-        title={label}
+      <Button
+        variant="ghost"
+        size="sm"
+        preventFocusOnPress
         aria-label={label}
         aria-haspopup="true"
         aria-expanded={open}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => setOpen((value) => !value)}
-        className={cn("flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-muted-foreground hover:bg-(--fill-3) hover:text-foreground [&_svg]:size-4", open && "bg-(--fill-2) text-foreground")}
+        onPress={() => setOpen((value) => !value)}
+        className={cn("gap-0.5 px-1.5 text-muted-foreground [&_svg]:size-4", open && "bg-(--fill-2) text-foreground")}
       >
         <span className="flex flex-col items-center">
           {icon}
-          <span className="mt-0.5 h-[3px] w-4 rounded-full" style={{ background: current ?? "transparent", boxShadow: current ? undefined : "inset 0 0 0 1px var(--border, #d0d7de)" }} />
+          <span className={cn("mt-0.5 h-[3px] w-4 rounded-full", !current && "ring-1 ring-(--separator) ring-inset")} style={current ? { background: current } : undefined} />
         </span>
         <ChevronDownIcon className="size-3! opacity-60" />
-      </button>
+      </Button>
       {open && (
         <div role="menu" aria-label={label} className="absolute top-full left-0 z-40 mt-1 flex w-max flex-col gap-1.5 rounded-xl border bg-popover p-1.5 shadow-xl">
           <div className="flex items-center gap-1">
@@ -374,25 +353,20 @@ function CustomColorRow({ custom, close }: { custom: CustomColor; close: () => v
       <label className="relative flex size-7 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg ring-1 ring-border" title={custom.words.choose} style={{ background: parsed ?? custom.value }}>
         <input type="color" aria-label={custom.words.choose} value={parsed ?? custom.value} onChange={(event) => setText(event.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
       </label>
-      <input
+      <Input
         aria-label={custom.words.code}
+        aria-invalid={!parsed && Boolean(text)}
         value={text}
         spellCheck={false}
         maxLength={7}
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); apply(parsed); } }}
-        className={cn("h-7 w-[86px] rounded-lg border bg-transparent px-2 text-xs uppercase outline-none focus:ring-2 focus:ring-primary/40", !parsed && text && "border-destructive")}
-        style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}
+        className="h-7 w-[86px] px-2 font-mono text-xs! uppercase"
         placeholder="#FF8800"
       />
-      <button
-        type="button"
-        disabled={!parsed}
-        onClick={() => apply(parsed)}
-        className="h-7 rounded-lg bg-primary px-2.5 text-xs font-medium text-primary-foreground disabled:opacity-40"
-      >
+      <Button size="xs" isDisabled={!parsed} onPress={() => apply(parsed)}>
         {custom.words.apply}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -455,9 +429,9 @@ function NoteColorPicker({ editor, words }: { editor: Editor; words: EditorStrin
 }
 
 const BADGES = [
-  { tone: "", color: "#0284c7", word: "plain" },
-  { tone: "good", color: "#16a34a", word: "good" },
-  { tone: "bad", color: "#dc2626", word: "bad" },
+  { tone: "", color: "var(--primary)", word: "plain" },
+  { tone: "good", color: "var(--system-green)", word: "good" },
+  { tone: "bad", color: "var(--destructive)", word: "bad" },
 ] as const;
 
 /** The three badges ([[BOR]], [[+YANGI]], [[-x]]) in one picker. */
@@ -564,17 +538,17 @@ function Toolbar({ editor, schema, words, lang }: { editor: Editor; schema: Sche
  * focusing press would close it before the click lands.
  */
 const BubbleButton = ({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: ReactNode }) => (
-  <button
-    type="button"
+  <Button
+    variant="ghost"
+    size="icon-sm"
+    preventFocusOnPress
     aria-label={label}
-    title={label}
     aria-pressed={active}
-    onMouseDown={(event) => event.preventDefault()}
-    onClick={onClick}
-    className={cn("flex size-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-(--fill-3) hover:text-foreground [&_svg]:size-4", active && "bg-(--fill-2) text-foreground")}
+    onPress={onClick}
+    className={cn("rounded-lg text-muted-foreground [&_svg]:size-4", active && "bg-(--fill-2) text-foreground")}
   >
     {children}
-  </button>
+  </Button>
 );
 
 /** Formatting next to a text selection. */
@@ -639,26 +613,20 @@ function BlockHandle({ editor, words }: { editor: Editor; words: EditorStrings }
   return (
     <DragHandle editor={editor} onNodeChange={({ node, pos }) => { if (!menu) target.current = { node, pos }; }}>
       <div className="doc-handle">
-        <button type="button" className="doc-handle-button" onMouseDown={(event) => event.preventDefault()} aria-label={words.handle.add} title={words.handle.add} onClick={addAfter}>
+        <Button variant="ghost" size="icon-xs" preventFocusOnPress className="doc-handle-button" aria-label={words.handle.add} onPress={addAfter}>
           <PlusIcon />
-        </button>
-        <button
-          type="button"
-          className="doc-handle-button"
-          aria-label={words.handle.actions}
-          title={words.handle.actions}
-          onClick={() => { if (menu) close(); else { lock(true); setMenu(true); } }}
-        >
-          <GripVerticalIcon />
-        </button>
-        {menu && (
-          <div className="doc-handle-menu" role="menu" onMouseLeave={close}>
-            <button type="button" role="menuitem" onClick={() => act("up")}><ArrowUpIcon />{words.handle.up}</button>
-            <button type="button" role="menuitem" onClick={() => act("down")}><ArrowDownIcon />{words.handle.down}</button>
-            <button type="button" role="menuitem" onClick={() => act("copy")}><CopyIcon />{words.handle.copy}</button>
-            <button type="button" role="menuitem" className="danger" onClick={() => act("delete")}><Trash2Icon />{words.handle.remove}</button>
-          </div>
-        )}
+        </Button>
+        <DropdownMenuTrigger isOpen={menu} onOpenChange={(open) => (open ? (lock(true), setMenu(true)) : close())}>
+          <Button variant="ghost" size="icon-xs" className="doc-handle-button cursor-grab" aria-label={words.handle.actions}>
+            <GripVerticalIcon />
+          </Button>
+          <DropdownMenu aria-label={words.handle.actions} className="w-auto min-w-40" onAction={(key) => act(key as "up" | "down" | "copy" | "delete")}>
+            <DropdownMenuItem id="up"><ArrowUpIcon />{words.handle.up}</DropdownMenuItem>
+            <DropdownMenuItem id="down"><ArrowDownIcon />{words.handle.down}</DropdownMenuItem>
+            <DropdownMenuItem id="copy"><CopyIcon />{words.handle.copy}</DropdownMenuItem>
+            <DropdownMenuItem id="delete" variant="destructive"><Trash2Icon />{words.handle.remove}</DropdownMenuItem>
+          </DropdownMenu>
+        </DropdownMenuTrigger>
       </div>
     </DragHandle>
   );

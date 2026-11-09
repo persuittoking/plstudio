@@ -41,6 +41,7 @@ import { useDesignerSettings, useOverlay, useSchema, useSelect } from "@/app/hoo
 import { Dock } from "./dock";
 import { Minimap } from "./minimap";
 import { MemoCard } from "./memo-card";
+import { PackageLayer } from "./package-layer";
 import { HeatLegend, IndexSuggestions } from "./index-suggestions";
 import { ImpactPanel } from "./impact-panel";
 import { CrowMarkers, RelationshipEdge } from "./relationship-edge";
@@ -420,6 +421,13 @@ export function Canvas({ readOnly, save, gestures: g }: CanvasProps) {
               onBlurText={g.blurMemoText}
             />
           ))}
+          <PackageLayer
+            packages={schema.packages ?? []}
+            tables={schema.tables}
+            livePosition={g.livePosition}
+            cardStyle={settings.cardStyle}
+            readOnly={readOnly}
+          />
           {/*
           No width or height: the overlay is pinned to the canvas origin
           and paints outside its own box (`overflow: visible`), so an edge

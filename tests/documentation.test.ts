@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
-import { applySchemaToYDoc, schemaFromYDoc } from "@/app/lib/collab/ydoc";
+import { applySchemaToYDoc, migrateLegacyDocumentation, schemaFromYDoc } from "@/app/lib/collab/ydoc";
 import { columnRules, diagramSources, documentTemplate, inline, parseDocument, renderDocument } from "@/app/lib/documentation";
 import { makeColumn, makeEmptySchema, makeMemo, makeTable, normalizeRelationships, type Schema } from "@/app/lib/schema";
 import { exportSchemaJson, parseSchemaJson } from "@/app/lib/schema-json";
@@ -99,6 +99,29 @@ describe("saving the document", () => {
     expect(schemaFromYDoc(ydoc).documentation).toBe("# Hujjat");
     applySchemaToYDoc(ydoc, { ...input, documentation: undefined });
     expect(schemaFromYDoc(ydoc).documentation).toBeUndefined();
+  });
+  it("merges two people typing in different paragraphs at once", () => {
+    const base = { ...schema(), documentation: "# Hujjat\n\nBirinchi.\n\nIkkinchi.\n" };
+    const a = new Y.Doc();
+    applySchemaToYDoc(a, base);
+    const b = new Y.Doc();
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    applySchemaToYDoc(a, { ...base, documentation: base.documentation.replace("Birinchi", "A: birinchi") });
+    applySchemaToYDoc(b, { ...base, documentation: base.documentation.replace("Ikkinchi", "B: ikkinchi") });
+    Y.applyUpdate(a, Y.encodeStateAsUpdate(b));
+    Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
+    expect(schemaFromYDoc(a).documentation).toBe("# Hujjat\n\nA: birinchi.\n\nB: ikkinchi.\n");
+    expect(schemaFromYDoc(b).documentation).toBe(schemaFromYDoc(a).documentation);
+  });
+  it("reads a document saved as one string, and moves it into the text once", () => {
+    const ydoc = new Y.Doc();
+    applySchemaToYDoc(ydoc, schema());
+    ydoc.getMap("meta").set("documentation", "# Eski");
+    expect(schemaFromYDoc(ydoc).documentation).toBe("# Eski");
+    migrateLegacyDocumentation(ydoc);
+    migrateLegacyDocumentation(ydoc);
+    expect(ydoc.getMap("meta").has("documentation")).toBe(false);
+    expect(ydoc.getText("documentation").toString()).toBe("# Eski");
   });
   it("survives a JSON export and import", () => {
     const result = parseSchemaJson(exportSchemaJson({ ...schema(), documentation: "# Hujjat" }));

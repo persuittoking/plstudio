@@ -1,5 +1,5 @@
 import { findColumn, findTable, type AppendResult, type ParseResult } from "./parser";
-import { APPEND_GAP, contentEdges, KEY_STRATEGIES, makeColumn, nextId, normalizeGroups, normalizeColumnTemplates, normalizeLint, normalizeMemos, normalizeQueries, normalizeRelationships, normalizeTables, ORACLE_TYPES, PALETTE, SCHEMA_FORMAT_VERSION, type Column, type ForeignKeyRef, type KeyStrategy, type OracleType, type Relationship, type Schema, type SchemaGroup, type Table, type TableIndex, type UniqueConstraint } from "./schema";
+import { APPEND_GAP, contentEdges, KEY_STRATEGIES, makeColumn, nextId, normalizeGroups, normalizeColumnTemplates, normalizeLint, normalizeMemos, normalizePackages, normalizeQueries, normalizeRelationships, normalizeTables, ORACLE_TYPES, PALETTE, SCHEMA_FORMAT_VERSION, type Column, type ForeignKeyRef, type KeyStrategy, type OracleType, type Relationship, type Schema, type SchemaGroup, type Table, type TableIndex, type UniqueConstraint } from "./schema";
 
 /**
  * The lossless counterpart to `generateDDL`. DDL carries none of the canvas --
@@ -46,6 +46,7 @@ export function exportSchemaJson(schema: Schema, exportedAt = new Date().toISOSt
         memos: schema.memos ?? [],
         queries: schema.queries ?? [],
         columnTemplates: schema.columnTemplates ?? [],
+        packages: schema.packages ?? [],
         documentation: schema.documentation ?? "",
         dialect: schema.dialect ?? "oracle",
         ...(schema.lint?.disabled.length ? { lint: schema.lint } : {}),
@@ -218,6 +219,7 @@ export function parseSchemaJson(text: string): ParseResult {
     memos: normalizeMemos(rawSchema.memos),
     queries: normalizeQueries(rawSchema.queries),
     columnTemplates: normalizeColumnTemplates(rawSchema.columnTemplates),
+    packages: normalizePackages(rawSchema.packages, tables.map((table) => table.id)),
     ...(str(rawSchema.documentation) ? { documentation: str(rawSchema.documentation) } : {}),
     ...(rawSchema.dialect === "postgres" ? { dialect: "postgres" as const } : {}),
     ...normalizeLint(rawSchema.lint),
@@ -286,6 +288,9 @@ export function mergeSchemaJson(base: Schema, text: string): AppendResult {
 
   const groups = (incoming.groups ?? []).filter((group) => fresh.some((table) => table.schemaId === group.id));
   const memos = incoming.memos ?? [];
+  // A package comes along when it covers an added table; one the project already has by name defers to it.
+  const taken = new Set((base.packages ?? []).map((pkg) => pkg.name.trim().toLowerCase()));
+  const packages = (incoming.packages ?? []).filter((pkg) => !taken.has(pkg.name.trim().toLowerCase()) && pkg.tableIds.some((id) => fresh.some((table) => table.id === id)));
   /*
    * Three maps, not one: a hand-written file may well use the same string as a
    * table id and a column id, and a flat map could not tell them apart.
@@ -311,8 +316,8 @@ export function mergeSchemaJson(base: Schema, text: string): AppendResult {
 
   // Groups and memos join the origin, or one sitting above the topmost table shifts away from it.
   const edges = contentEdges(base);
-  const originX = Math.min(...fresh.map((table) => table.x), ...groups.map((group) => group.x), ...memos.map((memo) => memo.x));
-  const originY = Math.min(...fresh.map((table) => table.y), ...groups.map((group) => group.y), ...memos.map((memo) => memo.y));
+  const originX = Math.min(...fresh.map((table) => table.x), ...groups.map((group) => group.x), ...memos.map((memo) => memo.x), ...packages.map((pkg) => pkg.x));
+  const originY = Math.min(...fresh.map((table) => table.y), ...groups.map((group) => group.y), ...memos.map((memo) => memo.y), ...packages.map((pkg) => pkg.y));
   const dx = edges ? edges.left - originX : 0;
   const dy = edges ? edges.bottom + APPEND_GAP - originY : 0;
 
@@ -338,6 +343,14 @@ export function mergeSchemaJson(base: Schema, text: string): AppendResult {
   }));
   const addedGroups = groups.map((group) => ({ ...group, id: groupIds.get(group.id) ?? group.id, x: group.x + dx, y: group.y + dy }));
   const addedMemos = memos.map((memo) => ({ ...memo, id: nextId("memo"), x: memo.x + dx, y: memo.y + dy }));
+  const addedPackages = packages.map((pkg) => ({
+    ...pkg,
+    id: nextId("package"),
+    x: pkg.x + dx,
+    y: pkg.y + dy,
+    tableIds: pkg.tableIds.flatMap((id) => tableIds.get(id) ?? deferred.get(id)?.id ?? []),
+    procedures: pkg.procedures.map((proc) => ({ ...proc, id: nextId("proc") })),
+  }));
   // A query names tables, not ids, so it needs nothing rewired -- only its own id.
   const addedQueries = (incoming.queries ?? []).map((query) => ({ ...query, id: nextId("query") }));
 
@@ -371,6 +384,7 @@ export function mergeSchemaJson(base: Schema, text: string): AppendResult {
       groups: [...(ground.groups ?? []), ...addedGroups],
       memos: [...(ground.memos ?? []), ...addedMemos],
       queries: [...(ground.queries ?? []), ...addedQueries],
+      packages: [...(ground.packages ?? []), ...addedPackages],
       relationships: [...(ground.relationships ?? []), ...relationships],
     }),
   );

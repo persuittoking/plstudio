@@ -11,7 +11,7 @@ import { dialectOf, typeName } from "./dialect";
 import { renderDiagramSVG } from "@/app/components/designer/diagram-svg";
 import { LANGUAGE_LABELS, highlightCode } from "@/app/lib/code-highlight";
 import { draftDocument } from "@/app/lib/document-draft";
-import { TONE_PATTERN, colorOfTone, highlightBackground, isHexColor } from "@/app/lib/doc-colors";
+import { colorOfTone, highlightBackground, isHexColor, markSource } from "@/app/lib/doc-colors";
 import { DEFAULT_LANG, documentLanguage, pageStrings, versionText, type DocLang } from "@/app/lib/document-i18n";
 
 /**
@@ -199,8 +199,8 @@ export function canvasDiagram(schema: Schema, theme: DocumentTheme): DocumentDia
 
 const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const HIGHLIGHT = new RegExp(`==(${TONE_PATTERN})?([^=]+)==`, "g");
-const COLORED = new RegExp(`!!(${TONE_PATTERN})?([^!]+)!!`, "g");
+const HIGHLIGHT = new RegExp(markSource("=="), "g");
+const COLORED = new RegExp(markSource("!!"), "g");
 /** A theme colour is a class the page's palette paints; a colour code is painted as it is. */
 const paint = (base: string, tone: string | undefined, property: "background" | "color") => {
   const color = colorOfTone(tone);

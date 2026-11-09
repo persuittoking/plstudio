@@ -137,7 +137,7 @@ export const MEMO_COLORS: {
 export const RESIZE_STEP = 8;
 export const RESIZE_STEP_COARSE = 32;
 
-export type PanelTab = "tables" | "relationships" | "queries";
+export type PanelTab = "tables" | "relationships" | "queries" | "packages";
 export type PanelMode = "structure" | "code";
 
 /** Select needs a real key for "no selection", since null renders the placeholder. */

@@ -94,7 +94,7 @@ export function Modals({
         baseline={baseline}
         onBaselineChange={setBaseline}
         readOnly={readOnly}
-        onDocumentationChange={(documentation) => commitWith((current) => ({ ...current, documentation: documentation || undefined }))}
+        onDocumentationChange={(update) => commitWith((current) => ({ ...current, documentation: update(current.documentation ?? "") || undefined }))}
       />}
       {opened.has("import") && <ImportModal
         isOpen={modal === "import"}

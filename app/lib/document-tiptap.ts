@@ -1,7 +1,7 @@
 import type { JSONContent } from "@tiptap/core";
 import { CALLOUT_SIGN, parseDocument, type CalloutTone, type DocBlock } from "@/app/lib/documentation";
 import { detectLanguage } from "@/app/lib/code-highlight";
-import { TONE_PATTERN, colorOfTone, toneOfColor } from "@/app/lib/doc-colors";
+import { colorOfTone, markSource, toneBefore } from "@/app/lib/doc-colors";
 
 /**
  * The bridge between the stored document text (`app/lib/documentation.ts`) and
@@ -20,11 +20,19 @@ export type BadgeTone = "" | "good" | "bad";
 /* ------------------------------------------------------------ inline */
 
 /** Highlight and word colours are a sign or a colour code after the opening marks (`app/lib/doc-colors.ts`). */
-const INLINE = new RegExp(String.raw`\[\[([+-]|\{#[0-9a-fA-F]{6}\})?([^\]]+)\]\]|\*\*([^*]+)\*\*|(?<![*\w])\*([^*\s][^*]*?)\*(?![*\w])|==(${TONE_PATTERN})?([^=]+)==|!!(${TONE_PATTERN})?([^!]+)!!`, "g");
+const INLINE = new RegExp([
+  String.raw`\[\[(?<badgeTone>[+-]|\{#[0-9a-fA-F]{6}\})?(?<badge>[^\]]+)\]\]`,
+  // Bold and italic together, as `inlineText` writes them; it has to come first, or `**` takes the inner pair.
+  String.raw`\*\*\*(?<boldItalic>[^*]+)\*\*\*`,
+  String.raw`\*\*(?<bold>[^*]+)\*\*`,
+  String.raw`(?<![*\w])\*(?<italic>[^*\s][^*]*?)\*(?![*\w])`,
+  markSource("==", { tone: "highlightTone", words: "highlight" }),
+  markSource("!!", { tone: "colorTone", words: "color" }),
+].join("|"), "g");
 const text = (value: string, marks: Mark[] = []): JSONContent => (marks.length ? { type: "text", text: value, marks } : { type: "text", text: value });
 
-/** The words inside a mark, read for marks of their own, with `mark` added to each. */
-const withMark = (source: string, mark: Mark) => inlineNodes(source).map((node) => ({ ...node, marks: [...(node.marks ?? []), mark] }));
+/** The words inside a mark, read for marks of their own, with `marks` added to each. */
+const withMark = (source: string, ...marks: Mark[]) => inlineNodes(source).map((node) => ({ ...node, marks: [...(node.marks ?? []), ...marks] }));
 
 /** `code`, [[badges]], ==highlights==, !!coloured words!!, **bold** and *italic* as marked text nodes. */
 export function inlineNodes(source: string): JSONContent[] {
@@ -35,11 +43,13 @@ export function inlineNodes(source: string): JSONContent[] {
     let last = 0;
     for (const match of part.matchAll(INLINE)) {
       if (match.index > last) nodes.push(text(part.slice(last, match.index)));
-      if (match[2] !== undefined) nodes.push(text(match[2], [{ type: "badge", attrs: { tone: match[1] === "+" ? "good" : match[1] === "-" ? "bad" : match[1]?.startsWith("{") ? match[1].slice(1, -1).toLowerCase() : "" } }]));
-      else if (match[3] !== undefined) nodes.push(...inlineNodes(match[3]).map((node) => ({ ...node, marks: [...(node.marks ?? []), { type: "bold" }] })));
-      else if (match[4] !== undefined) nodes.push(text(match[4], [{ type: "italic" }]));
-      else if (match[6] !== undefined) nodes.push(...withMark(match[6], { type: "highlight", attrs: { color: colorOfTone(match[5]) } }));
-      else nodes.push(...withMark(match[8], { type: "textColor", attrs: { color: colorOfTone(match[7]) } }));
+      const group = match.groups!;
+      if (group.badge !== undefined) nodes.push(text(group.badge, [{ type: "badge", attrs: { tone: group.badgeTone === "+" ? "good" : group.badgeTone === "-" ? "bad" : group.badgeTone?.startsWith("{") ? group.badgeTone.slice(1, -1).toLowerCase() : "" } }]));
+      else if (group.boldItalic !== undefined) nodes.push(...withMark(group.boldItalic, { type: "italic" }, { type: "bold" }));
+      else if (group.bold !== undefined) nodes.push(...withMark(group.bold, { type: "bold" }));
+      else if (group.italic !== undefined) nodes.push(...withMark(group.italic, { type: "italic" }));
+      else if (group.highlight !== undefined) nodes.push(...withMark(group.highlight, { type: "highlight", attrs: { color: colorOfTone(group.highlightTone) } }));
+      else nodes.push(...withMark(group.color, { type: "textColor", attrs: { color: colorOfTone(group.colorTone) } }));
       last = match.index + match[0].length;
     }
     if (last < part.length) nodes.push(text(part.slice(last)));
@@ -60,9 +70,10 @@ export function inlineText(nodes: JSONContent[] = []): string {
     const tone = String(badge?.attrs?.tone ?? "");
     if (badge) value = `[[${tone === "good" ? "+" : tone === "bad" ? "-" : /^#[0-9a-f]{6}$/i.test(tone) ? `{${tone.toLowerCase()}}` : ""}${value.replace(/[[\]]/g, "")}]]`;
     const color = node.marks?.find((mark) => mark.type === "textColor");
-    if (color) value = `!!${toneOfColor(String(color.attrs?.color ?? "yellow"))}${value.replace(/!/g, "")}!!`;
+    // A pair inside the words would close the mark early, so a run inside them is cut to one; a run at their end is fine.
+    if (color) value = `!!${toneBefore(String(color.attrs?.color ?? "yellow"), value)}${value.replace(/!{2,}(?=[^!])/g, "!")}!!`;
     const highlight = node.marks?.find((mark) => mark.type === "highlight");
-    if (highlight) value = `==${toneOfColor(String(highlight.attrs?.color ?? "yellow"))}${value.replace(/=/g, "")}==`;
+    if (highlight) value = `==${toneBefore(String(highlight.attrs?.color ?? "yellow"), value)}${value.replace(/={2,}(?=[^=])/g, "=")}==`;
     if (has(node, "italic")) value = `*${value}*`;
     if (has(node, "bold")) value = `**${value}**`;
     return value;

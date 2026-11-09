@@ -12,7 +12,10 @@ import { PALETTE } from "@/app/lib/schema";
  * false`), which would otherwise taint the canvas `svgToPng` draws on. The root
  * keeps only its `viewBox`: the document gives it a position and size.
  */
-/** The document's colours, so a flowchart sits in the page like the canvas cards do. */
+/**
+ * The document's colours (`THEME_VARS` in `app/lib/documentation.ts`), so a flowchart sits in the page like the canvas cards do.
+ * Hex, not tokens: Mermaid derives its shades from concrete colours, and the drawing ships inside an exported file.
+ */
 const FLOW_COLORS = {
   light: { page: "#ffffff", card: "#f6f8fa", border: "#c5d0db", text: "#1f2328", line: "#0969da", label: "#59636e" },
   dark: { page: "#0d1117", card: "#161b22", border: "#3d4b5c", text: "#e6edf3", line: "#58a6ff", label: "#8b949e" },
@@ -23,6 +26,8 @@ const config = (theme: DiagramTheme) => {
   return {
     startOnLoad: false,
     securityLevel: "strict" as const,
+    // Otherwise a source that does not parse leaves its error drawing in <body>: one per invalid keystroke.
+    suppressErrorRendering: true,
     theme: "base" as const,
     // "neo", Mermaid 12's default, draws every box with a heavy shadow.
     look: "classic" as const,

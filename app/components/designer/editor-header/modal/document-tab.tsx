@@ -16,6 +16,7 @@ import {
 } from "@/app/lib/documentation";
 import { DOC_LANGUAGES, documentLanguage, setVersion, splitVersions, type DocLang } from "@/app/lib/document-i18n";
 import type { Schema } from "@/app/lib/schema";
+import { rebaseText } from "@/app/lib/text-merge";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DocumentEditor } from "./document-editor/document-editor";
@@ -28,9 +29,9 @@ import { renderMermaidDiagram } from "./mermaid-render";
 const COMMIT_DELAY = 600;
 const RENDER_DELAY = 300;
 
-/** A placeholder figure for a Mermaid block that does not parse, so one typo does not blank the page. */
+/** A placeholder figure for a Mermaid block that does not parse, so one typo does not blank the page; drawn in the page's own danger colour. */
 const errorDiagram = (message: string): DocumentDiagram => ({
-  markup: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 44"><text x="12" y="27" font-family="ui-monospace, monospace" font-size="13" fill="#e5534b">${message.replace(/&/g, "&amp;").replace(/</g, "&lt;").slice(0, 110)}</text></svg>`,
+  markup: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 44"><text x="12" y="27" font-family="ui-monospace, monospace" font-size="13" style="fill:var(--bad)">${message.replace(/&/g, "&amp;").replace(/</g, "&lt;").slice(0, 110)}</text></svg>`,
   width: 720,
   height: 44,
 });
@@ -46,7 +47,7 @@ export function DocumentTab({
   readOnly: boolean;
   fileBase: string;
   save: (blob: Blob, name: string) => void;
-  onDocumentationChange: (text: string) => void;
+  onDocumentationChange: (update: (current: string) => string) => void;
 }) {
   // The page starts in the app's own appearance (System/Light/Dark in the account menu); the switch changes it, exports included.
   const { resolvedTheme } = useTheme();
@@ -61,22 +62,33 @@ export function DocumentTab({
   // The language on screen. Each has its own version of the text; switching shows it, and never rewrites another.
   const [lang, setLang] = useState<DocLang>(() => documentLanguage(schema.documentation ?? ""));
 
-  // Typed text waits here until a pause; a remote edit only replaces it when nothing local is pending.
+  /*
+   * Typed text waits in `latest` until a pause. `base` is the document it was
+   * typed onto: a collaborator's edit arriving meanwhile is not shown (it would
+   * reset the editor under the cursor), and the flush merges the typing onto it
+   * rather than over it.
+   */
   const pending = useRef<number | null>(null);
   const latest = useRef(draft);
+  const base = useRef(draft);
   const commitRef = useRef(onDocumentationChange);
   commitRef.current = onDocumentationChange;
   useEffect(() => {
-    if (pending.current === null && (schema.documentation ?? "") !== latest.current) {
-      latest.current = schema.documentation ?? "";
-      setDraft(latest.current);
-    }
+    if (pending.current !== null) return;
+    base.current = schema.documentation ?? "";
+    if (base.current !== latest.current) { latest.current = base.current; setDraft(base.current); }
   }, [schema.documentation]);
   const flush = () => {
     if (pending.current === null) return;
     window.clearTimeout(pending.current);
     pending.current = null;
-    commitRef.current(latest.current);
+    commitRef.current((current) => {
+      const { text, conflict } = rebaseText(base.current, latest.current, current);
+      if (conflict) toast.warning("A collaborator edited the same passage. Your version was kept.");
+      if (text !== latest.current) setDraft(text);
+      base.current = latest.current = text;
+      return text;
+    });
   };
   useEffect(() => flush, []);
 
@@ -159,7 +171,6 @@ export function DocumentTab({
             aria-label="Document language"
             selectionMode="single"
             disallowEmptySelection
-            isDisabled={readOnly}
             selectedKeys={[lang]}
             onSelectionChange={(keys) => {
               const [key] = [...keys];

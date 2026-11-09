@@ -2,6 +2,7 @@ import {
   cloneSchema,
   normalizeMemos,
   normalizeColumnTemplates,
+  normalizePackages,
   normalizeQueries,
   normalizeGroups,
   normalizeRelationships,
@@ -339,6 +340,7 @@ export function prepareCanvasSchema(schema: Schema): Schema {
   next.memos = normalizeMemos(next.memos);
   next.queries = normalizeQueries(next.queries);
   next.columnTemplates = normalizeColumnTemplates(next.columnTemplates);
+  next.packages = normalizePackages(next.packages, next.tables.map((table) => table.id));
   return next;
 }
 

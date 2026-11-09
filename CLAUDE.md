@@ -155,3 +155,20 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Model routing
+
+| Task type | Delegate to | Model · effort |
+| - | - | - |
+| Find files, symbols, usages, "where is X" | `code-searcher` | haiku · low |
+| Scoped edit: feature, fix, refactor in a few files | `implementer` | sonnet · medium |
+| Run tests, lint, build; report failures | `test-runner` | haiku · low |
+| Review a risky diff: auth, payments, migrations, security, public API, concurrency | `reviewer` | opus · high |
+| Anything else | `general-purpose` with `model: "sonnet"` | sonnet · session effort |
+
+1. Every delegation names one of the agents above, or passes `model` explicitly.
+2. When unsure of the tier, use the middle tier (sonnet). Never the cheapest tier on risky work.
+3. Verify by risk: after every implementer edit, run test-runner. Reviewer only for the risky list.
+4. Escalate, don't loop: same test fails twice → send diff + failure to reviewer, then implementer again.
+5. Keep one model per task. Do not run /model mid-task; delegate instead.
+6. Use the advisor before committing to a multi-file approach and before declaring a long task done.
