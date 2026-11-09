@@ -18,6 +18,7 @@ import { Issues } from "./issues";
 
 // The panel opens on the tables tab; the code view and the query workbench load when first shown.
 const CodeView = dynamic(() => import("./code-view").then((module) => module.CodeView), { ssr: false });
+const PackagesTab = dynamic(() => import("./packages-tab/packages-tab").then((module) => module.PackagesTab), { ssr: false });
 const QueriesTab = dynamic(() => import("./queries-tab/queries-tab").then((module) => module.QueriesTab), { ssr: false });
 
 export type SidePanelProps = {
@@ -84,6 +85,9 @@ export function SidePanel({
             <TabsTrigger id="relationships">
               Relationships <span className="panel-segment-count">{relationshipCount}</span>
             </TabsTrigger>
+            <TabsTrigger id="packages">
+              Packages <span className="panel-segment-count">{(schema.packages ?? []).length}</span>
+            </TabsTrigger>
             <TabsTrigger id="queries">
               Queries <span className="panel-segment-count">{(schema.queries ?? []).length}</span>
             </TabsTrigger>
@@ -96,6 +100,8 @@ export function SidePanel({
           <CodeView />
         ) : panelTab === "tables" ? (
           tablesTab
+        ) : panelTab === "packages" ? (
+          <PackagesTab readOnly={readOnly} />
         ) : panelTab === "queries" ? (
           <QueriesTab readOnly={readOnly} />
         ) : (

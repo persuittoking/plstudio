@@ -1,5 +1,5 @@
 export const ORACLE_VERSION = "12.2+" as const;
-export const SCHEMA_FORMAT_VERSION = 10 as const;
+export const SCHEMA_FORMAT_VERSION = 11 as const;
 
 export const ORACLE_TYPES = [
   "VARCHAR2",
@@ -156,6 +156,38 @@ export type ColumnTemplate = {
   columns: TemplateColumn[];
 };
 
+/**
+ * A hand-written subprogram kept in a package. `params` is the text between the
+ * parentheses and `body` is everything after `is` (declarations, `begin … end;`),
+ * both emitted verbatim -- the app never parses them.
+ */
+export type PackageProcedure = {
+  id: string;
+  kind: "procedure" | "function";
+  name: string;
+  params: string;
+  /** The return type of a function. Ignored for a procedure. */
+  returns?: string;
+  body: string;
+};
+
+/**
+ * An Oracle package: the tables whose `Ins_/Upd_/Del_` procedures it carries
+ * (`includeCrud`) and the project's own subprograms. Drawn on the canvas as a
+ * card, which is positioned but never sized by hand -- its height follows its rows.
+ */
+export type SchemaPackage = {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  tableIds: string[];
+  includeCrud: boolean;
+  /** Package-level state and private helpers, emitted verbatim at the top of the body. */
+  declarations?: string;
+  procedures: PackageProcedure[];
+};
+
 export type Schema = {
   id: string;
   name: string;
@@ -166,6 +198,8 @@ export type Schema = {
   relationships?: Relationship[];
   memos?: Memo[];
   queries?: SavedQuery[];
+  /** Absent and empty mean the same thing: the one derived `<Prefix>_Dml` body. */
+  packages?: SchemaPackage[];
   /** The project's own column templates. Absent and empty mean the same thing. */
   columnTemplates?: ColumnTemplate[];
   /**
@@ -341,6 +375,53 @@ export function normalizeQueries(value: unknown): SavedQuery[] {
   });
 }
 
+export const PACKAGE_WIDTH = 260;
+export const PACKAGE_HEADER_HEIGHT = 36;
+export const PACKAGE_ROW_HEIGHT = 24;
+
+/** One row per covered table (when `includeCrud`) and per subprogram; an empty package still shows one hint row. */
+export const packageRowCount = (pkg: SchemaPackage) => (pkg.includeCrud ? pkg.tableIds.length : 0) + pkg.procedures.length;
+export const packageHeight = (pkg: SchemaPackage) => PACKAGE_HEADER_HEIGHT + Math.max(1, packageRowCount(pkg)) * PACKAGE_ROW_HEIGHT + 8;
+
+export const makePackage =(name = "", x = 160, y = 120): SchemaPackage => ({
+  id: nextId("package"), name, x, y, tableIds: [], includeCrud: true, procedures: [],
+});
+
+export const makePackageProcedure = (kind: PackageProcedure["kind"] = "procedure"): PackageProcedure => ({
+  id: nextId("proc"), kind, name: "", params: "", returns: kind === "function" ? "varchar2" : undefined, body: "begin\n  null;\nend;",
+});
+
+const str = (value: unknown, fallback = "") => (typeof value === "string" ? value : fallback);
+const num = (value: unknown, fallback: number) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
+
+/** Tolerates junk, and prunes `tableIds` to the tables that exist so a deleted table just leaves its package. */
+export function normalizePackages(value: unknown, tableIds?: Iterable<string>): SchemaPackage[] {
+  if (!Array.isArray(value)) return [];
+  const live = tableIds ? new Set(tableIds) : undefined;
+  const seen = new Set<string>();
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const pkg = item as Partial<SchemaPackage>;
+    if (typeof pkg.id !== "string" || !pkg.id || seen.has(pkg.id)) return [];
+    seen.add(pkg.id);
+    const procedures = (Array.isArray(pkg.procedures) ? pkg.procedures : []).flatMap((proc): PackageProcedure[] => {
+      if (!proc || typeof proc !== "object" || typeof proc.id !== "string" || !proc.id) return [];
+      const kind = proc.kind === "function" ? "function" : "procedure";
+      return [{ id: proc.id, kind, name: str(proc.name), params: str(proc.params), returns: kind === "function" ? str(proc.returns, "varchar2") : undefined, body: str(proc.body) }];
+    });
+    const ids = (Array.isArray(pkg.tableIds) ? pkg.tableIds : []).filter((id): id is string => typeof id === "string" && (!live || live.has(id)));
+    return [{ id: pkg.id, name: str(pkg.name), x: Math.max(0, num(pkg.x, 160)), y: Math.max(0, num(pkg.y, 120)), tableIds: [...new Set(ids)], includeCrud: pkg.includeCrud !== false, declarations: str(pkg.declarations) || undefined, procedures }];
+  });
+}
+
+/** `schema` itself when every package already points only at live tables, so an ordinary commit stays identity-stable. */
+export function prunePackages(schema: Schema): Schema {
+  if (!schema.packages?.length) return schema;
+  const live = new Set(schema.tables.map((table) => table.id));
+  if (schema.packages.every((pkg) => pkg.tableIds.every((id) => live.has(id)))) return schema;
+  return { ...schema, packages: schema.packages.map((pkg) => ({ ...pkg, tableIds: pkg.tableIds.filter((id) => live.has(id)) })) };
+}
+
 const templateColumn = (partial: Partial<TemplateColumn> & Pick<TemplateColumn, "name" | "type">): TemplateColumn => ({
   size: "", notNull: false, pk: false, unique: false, defaultValue: "", check: "", ...partial,
 });
@@ -433,6 +514,7 @@ export function makeDemoSchema(): Schema {
     relationships: [],
     memos: [],
     queries: [],
+    packages: [],
     columnTemplates: [],
   };
 }
@@ -448,6 +530,7 @@ export function makeEmptySchema(name = "Untitled Diagram", id = nextId("schema")
     relationships: [],
     memos: [],
     queries: [],
+    packages: [],
     columnTemplates: [],
   };
 }

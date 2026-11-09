@@ -10,6 +10,7 @@ import {
   type SavedQuery,
   type Schema,
   type SchemaGroup,
+  type SchemaPackage,
   type Table,
 } from "@/app/lib/schema";
 import { spliceOf } from "@/app/lib/text-merge";
@@ -32,6 +33,7 @@ export type YSchemaRoot = {
   memos: Y.Array<Y.Map<unknown>>;
   queries: Y.Array<Y.Map<unknown>>;
   columnTemplates: Y.Array<Y.Map<unknown>>;
+  packages: Y.Array<Y.Map<unknown>>;
   /**
    * The written document (`Schema.documentation`) as text, so two people typing
    * in different paragraphs both keep their words. Documents from before it
@@ -49,13 +51,14 @@ export const schemaRoot = (ydoc: Y.Doc): YSchemaRoot => ({
   memos: ydoc.getArray<Y.Map<unknown>>("memos"),
   queries: ydoc.getArray<Y.Map<unknown>>("queries"),
   columnTemplates: ydoc.getArray<Y.Map<unknown>>("columnTemplates"),
+  packages: ydoc.getArray<Y.Map<unknown>>("packages"),
   documentation: ydoc.getText("documentation"),
 });
 
 /** A doc nobody has seeded yet. Guards against two clients both seeding on first open. */
 export const isEmptyDoc = (ydoc: Y.Doc) => {
   const root = schemaRoot(ydoc);
-  return root.meta.size === 0 && root.tables.length === 0 && root.groups.length === 0 && root.memos.length === 0 && root.relationships.length === 0 && root.queries.length === 0 && root.columnTemplates.length === 0 && root.documentation.length === 0;
+  return root.meta.size === 0 && root.tables.length === 0 && root.groups.length === 0 && root.memos.length === 0 && root.relationships.length === 0 && root.queries.length === 0 && root.columnTemplates.length === 0 && root.packages.length === 0 && root.documentation.length === 0;
 };
 
 /**
@@ -197,6 +200,10 @@ const writeQuery = (map: Y.Map<unknown>, query: SavedQuery) =>
 const writeColumnTemplate = (map: Y.Map<unknown>, template: ColumnTemplate) =>
   writeFields(map, { id: template.id, name: template.name, columns: template.columns });
 
+// `tableIds` and `procedures` are plain values: a package's contents are edited whole, in its panel.
+const writePackage = (map: Y.Map<unknown>, pkg: SchemaPackage) =>
+  writeFields(map, { id: pkg.id, name: pkg.name, x: pkg.x, y: pkg.y, includeCrud: pkg.includeCrud, declarations: pkg.declarations, tableIds: pkg.tableIds, procedures: pkg.procedures });
+
 /**
  * Applies a whole next `Schema` to the doc as one transaction. Taking a whole
  * schema — rather than granular operations — is what lets every existing
@@ -214,6 +221,7 @@ export function applySchemaToYDoc(ydoc: Y.Doc, next: Schema, origin?: unknown) {
     reconcileList(root.memos, next.memos ?? [], writeMemo);
     reconcileList(root.queries, next.queries ?? [], writeQuery);
     reconcileList(root.columnTemplates, next.columnTemplates ?? [], writeColumnTemplate);
+    reconcileList(root.packages, next.packages ?? [], writePackage);
     writeText(root.documentation, next.documentation ?? "");
   }, origin);
   return ydoc;
@@ -233,6 +241,7 @@ const GROUP_KEYS = ["id", "name", "keyword", "x", "y", "width", "height", "color
 const MEMO_KEYS = ["id", "text", "x", "y", "width", "height", "color", "schemaId"] as const;
 const QUERY_KEYS = ["id", "name", "sql", "executions"] as const;
 const TEMPLATE_KEYS = ["id", "name", "columns"] as const;
+const PACKAGE_KEYS = ["id", "name", "x", "y", "includeCrud", "declarations", "tableIds", "procedures"] as const;
 
 /**
  * Ids are unique by definition in the domain, so a repeated id is always damage —
@@ -340,6 +349,7 @@ export function schemaFromYDoc(
     memos: read<Memo>(root.memos, MEMO_KEYS),
     queries: read<SavedQuery>(root.queries, QUERY_KEYS),
     columnTemplates: read<ColumnTemplate>(root.columnTemplates, TEMPLATE_KEYS),
+    packages: read<SchemaPackage>(root.packages, PACKAGE_KEYS),
     ...readDocumentation(root),
     ...normalizeLint({ disabled: root.meta.get("lintDisabled") }),
   };

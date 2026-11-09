@@ -1,4 +1,4 @@
-import { ddlModel, dmlPlan, getPackageName } from "./generators";
+import { ddlModel, dmlPlan, getPackageName, packageDisplayName } from "./generators";
 import { columnKey, resolveQuery, tableIndex, type ResolvedQuery } from "./query-analysis";
 import { normalizeIdentifier, type Schema } from "./schema";
 
@@ -90,7 +90,10 @@ export function columnImpact(schema: Schema, target: ImpactTarget, resolved?: Ma
   /* The package names columns explicitly in Upd_/Del_ and in Ins_'s key and
      audit assignments. An insert through `%rowtype` alone recompiles on its own. */
   const plan = dmlPlan(table);
-  const pkg = getPackageName(schema);
+  // Defined packages own the procedures; with none, the derived one does. A table in no package has no PL/SQL to break.
+  const owners = schema.packages?.length
+    ? schema.packages.flatMap((candidate, index) => (candidate.includeCrud && candidate.tableIds.includes(table.id) ? [packageDisplayName(candidate, index)] : []))
+    : [getPackageName(schema)];
   const is = (candidate: { id: string } | undefined) => candidate?.id === column.id;
   const audited = is(plan.modifyOnCol) || is(plan.modifyByCol);
   const insNames = audited || (plan.hasSingleNumberPk && is(plan.pkCols[0]));
@@ -101,11 +104,11 @@ export function columnImpact(schema: Schema, target: ImpactTarget, resolved?: Ma
       [`Del_${plan.procSuffix}`, plan.whereCols.some(is) || (Boolean(plan.stateCol) && (is(plan.stateCol) || audited))] as [string, boolean],
     ]),
   ];
-  procedures.forEach(([procedure, names]) => items.push({
+  owners.forEach((pkg) => procedures.forEach(([procedure, names]) => items.push({
     kind: "plsql", label: `${pkg}.${procedure}`,
     detail: names ? "Names this column" : "Inserts through %rowtype",
     tableIds: [table.id], edgeIds: [], columns: [], drop: names, rename: names,
-  }));
+  })));
 
   const queries = schema.queries ?? [];
   const lookup = resolved ? null : tableIndex(schema);

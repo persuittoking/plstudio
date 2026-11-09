@@ -27,6 +27,7 @@ import {
   type Table,
   type TableIndex,
   type UniqueConstraint,
+  prunePackages,
 } from "@/app/lib/schema";
 import { validateSchema } from "@/app/lib/validation";
 import type { ValidationIssue } from "@/app/lib/validation";
@@ -181,7 +182,7 @@ export function SchemaProvider({
   const commit = useCallback(
     (next: Schema) => {
       if (readOnly) return;
-      commitShared(next);
+      commitShared(prunePackages(next));
       setDirty(true);
     },
     [commitShared, readOnly, setDirty],

@@ -45,6 +45,9 @@ export type LayoutContextValue = {
   relationshipQuery: string;
   setRelationshipQuery: React.Dispatch<React.SetStateAction<string>>;
   openRelationshipId: string | null;
+  /** The package expanded in the Packages tab; a canvas card sets it. */
+  openPackageId: string | null;
+  setOpenPackageId: React.Dispatch<React.SetStateAction<string | null>>;
   setOpenRelationshipId: React.Dispatch<React.SetStateAction<string | null>>;
   collapsedGroupIds: Set<string>;
   setCollapsedGroupIds: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -69,6 +72,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [tableQuery, setTableQuery] = useState("");
   const [relationshipQuery, setRelationshipQuery] = useState("");
+  const [openPackageId, setOpenPackageId] = useState<string | null>(null);
   const [openRelationshipId, setOpenRelationshipId] = useState<string | null>(
     null,
   );
@@ -173,6 +177,8 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       setRelationshipQuery,
       openRelationshipId,
       setOpenRelationshipId,
+      openPackageId,
+      setOpenPackageId,
       collapsedGroupIds,
       setCollapsedGroupIds,
     }),
@@ -191,6 +197,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       tableQuery,
       relationshipQuery,
       openRelationshipId,
+      openPackageId,
       collapsedGroupIds,
     ],
   );

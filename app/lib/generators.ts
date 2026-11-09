@@ -3,7 +3,9 @@ import {
   normalizeGroups,
   normalizeRelationships,
   primaryKeyColumns,
+  type PackageProcedure,
   type Schema,
+  type SchemaPackage,
   type Table,
   type Column,
   typeString,
@@ -372,138 +374,134 @@ export function dmlPlan(table: Table) {
   };
 }
 
-export function generateDML(schema: Schema) {
-  const pkgName = getPackageName(schema);
-  const out = [`create or replace package body ${pkgName} is`];
-  const sep = "  -----------------------------------------------------------------------------------------------------------";
+const DML_SEP = "  -----------------------------------------------------------------------------------------------------------";
 
-  schema.tables.forEach((table) => {
-    const { tableName, procSuffix, pkCols, hasSingleNumberPk, modifyOnCol, modifyByCol, stateCol, isLogTable, sequenceName, setCols, whereCols } = dmlPlan(table);
+/** One generated subprogram: its signature (shared by spec and body) and the lines after `is`. */
+type DmlProcedure = { signature: string; body: string[] };
 
-    // 1. Ins Procedure
-    out.push(sep);
-    out.push(`  Procedure Ins_${procSuffix}(Io_Row in out nocopy ${tableName}%rowtype) is`);
-    out.push("  begin");
+/** The Ins/Upd/Del procedures of one table, in the order the package body prints them. */
+function tableProcedures(table: Table): DmlProcedure[] {
+  const { tableName, procSuffix, pkCols, hasSingleNumberPk, modifyOnCol, modifyByCol, stateCol, isLogTable, sequenceName, setCols, whereCols } = dmlPlan(table);
+  const procs: DmlProcedure[] = [];
+  const aligned = (assignments: { lhs: string; rhs: string }[]) => {
+    if (!assignments.length) return [];
+    const width = Math.max(...assignments.map((a) => a.lhs.length));
+    return [...assignments.map((a) => `    ${a.lhs.padEnd(width)} := ${a.rhs}`), "    --"];
+  };
+  const audit = (): { lhs: string; rhs: string }[] => [
+    ...(modifyOnCol ? [{ lhs: `Io_Row.${modifyOnCol.name}`, rhs: "sysdate;" }] : []),
+    ...(modifyByCol ? [{ lhs: `Io_Row.${modifyByCol.name}`, rhs: "Core.User_Env.Get_User_Id;" }] : []),
+  ];
 
-    const insAssignments: { lhs: string; rhs: string }[] = [];
-    if (hasSingleNumberPk) {
-      insAssignments.push({
-        lhs: `Io_Row.${pkCols[0].name}`,
-        rhs: `${sequenceName}.Nextval;`,
-      });
-    }
-    if (modifyOnCol) {
-      insAssignments.push({
-        lhs: `Io_Row.${modifyOnCol.name}`,
-        rhs: "sysdate;",
-      });
-    }
-    if (modifyByCol) {
-      insAssignments.push({
-        lhs: `Io_Row.${modifyByCol.name}`,
-        rhs: "Core.User_Env.Get_User_Id;",
-      });
-    }
+  // 1. Ins Procedure
+  procs.push({
+    signature: `Procedure Ins_${procSuffix}(Io_Row in out nocopy ${tableName}%rowtype)`,
+    body: [
+      "  begin",
+      ...aligned([...(hasSingleNumberPk ? [{ lhs: `Io_Row.${pkCols[0].name}`, rhs: `${sequenceName}.Nextval;` }] : []), ...audit()]),
+      `    insert into ${tableName} values Io_Row;`,
+      "  end;",
+    ],
+  });
+  if (isLogTable) return procs;
 
-    if (insAssignments.length > 0) {
-      const maxLhsLen = Math.max(...insAssignments.map((a) => a.lhs.length));
-      insAssignments.forEach((a) => {
-        out.push(`    ${a.lhs.padEnd(maxLhsLen)} := ${a.rhs}`);
-      });
-      out.push("    --");
-    }
-    out.push(`    insert into ${tableName} values Io_Row;`);
-    out.push("  end;");
-
-    if (isLogTable) return;
-
-    // 2. Upd Procedure
-    out.push(sep);
-    out.push(`  Procedure Upd_${procSuffix}(Io_Row in out nocopy ${tableName}%rowtype) is`);
-    out.push("  begin");
-
-    const updPreAssignments: { lhs: string; rhs: string }[] = [];
-    if (modifyOnCol) {
-      updPreAssignments.push({
-        lhs: `Io_Row.${modifyOnCol.name}`,
-        rhs: "sysdate;",
-      });
-    }
-    if (modifyByCol) {
-      updPreAssignments.push({
-        lhs: `Io_Row.${modifyByCol.name}`,
-        rhs: "Core.User_Env.Get_User_Id;",
-      });
-    }
-
-    if (updPreAssignments.length > 0) {
-      const maxLhsLen = Math.max(...updPreAssignments.map((a) => a.lhs.length));
-      updPreAssignments.forEach((a) => {
-        out.push(`    ${a.lhs.padEnd(maxLhsLen)} := ${a.rhs}`);
-      });
-      out.push("    --");
-    }
-
-    const maxSetColLen = Math.max(...setCols.map((c) => c.name.length));
-
-    out.push(`    update ${tableName}`);
-    setCols.forEach((c, idx) => {
-      const prefix = idx === 0 ? "       set " : "           ";
-      const comma = idx < setCols.length - 1 ? "," : "";
-      out.push(`    ${prefix}${c.name.padEnd(maxSetColLen)} = Io_Row.${c.name}${comma}`);
-    });
-
-    whereCols.forEach((c, idx) => {
-      const prefix = idx === 0 ? "     where " : "       and ";
-      const semicolon = idx === whereCols.length - 1 ? ";" : "";
-      out.push(`    ${prefix}${c.name} = Io_Row.${c.name}${semicolon}`);
-    });
-    out.push("  end;");
-
-    // 3. Del Procedure
-    out.push(sep);
-    const delParams = whereCols
-      .map((c) => {
-        const typeLower = c.type.toLowerCase();
-        const paramType = typeLower === "number" ? "number" : typeLower === "date" ? "date" : "varchar2";
-        return `i_${c.name} ${paramType}`;
-      })
-      .join(", ");
-
-    out.push(`  Procedure Del_${procSuffix}(${delParams}) is`);
-    out.push("  begin");
-
-    if (stateCol) {
-      const softSetCols: { name: string; val: string }[] = [{ name: stateCol.name, val: "'P'" }];
-      if (modifyOnCol) softSetCols.push({ name: modifyOnCol.name, val: "sysdate" });
-      if (modifyByCol) softSetCols.push({ name: modifyByCol.name, val: "Core.User_Env.Get_User_Id" });
-
-      const maxSoftColLen = Math.max(...softSetCols.map((s) => s.name.length));
-
-      out.push(`    update ${tableName}`);
-      softSetCols.forEach((s, idx) => {
-        const prefix = idx === 0 ? "       set " : "           ";
-        const comma = idx < softSetCols.length - 1 ? "," : "";
-        out.push(`    ${prefix}${s.name.padEnd(maxSoftColLen)} = ${s.val}${comma}`);
-      });
-
-      whereCols.forEach((c, idx) => {
-        const prefix = idx === 0 ? "     where " : "       and ";
-        const semicolon = idx === whereCols.length - 1 ? ";" : "";
-        out.push(`    ${prefix}${c.name} = i_${c.name}${semicolon}`);
-      });
-    } else {
-      const whereCond = whereCols.map((c) => `${c.name} = i_${c.name}`).join(" and ");
-      out.push(`    delete from ${tableName} where ${whereCond};`);
-    }
-
-    out.push("  end;");
+  // 2. Upd Procedure
+  const maxSetColLen = Math.max(...setCols.map((c) => c.name.length));
+  procs.push({
+    signature: `Procedure Upd_${procSuffix}(Io_Row in out nocopy ${tableName}%rowtype)`,
+    body: [
+      "  begin",
+      ...aligned(audit()),
+      `    update ${tableName}`,
+      ...setCols.map((c, idx) => `    ${idx === 0 ? "       set " : "           "}${c.name.padEnd(maxSetColLen)} = Io_Row.${c.name}${idx < setCols.length - 1 ? "," : ""}`),
+      ...whereCols.map((c, idx) => `    ${idx === 0 ? "     where " : "       and "}${c.name} = Io_Row.${c.name}${idx === whereCols.length - 1 ? ";" : ""}`),
+      "  end;",
+    ],
   });
 
-  out.push(sep);
-  out.push(`end ${pkgName};`);
+  // 3. Del Procedure
+  const delParams = whereCols
+    .map((c) => {
+      const typeLower = c.type.toLowerCase();
+      return `i_${c.name} ${typeLower === "number" ? "number" : typeLower === "date" ? "date" : "varchar2"}`;
+    })
+    .join(", ");
+  const softSetCols = stateCol
+    ? [{ name: stateCol.name, val: "'P'" }, ...(modifyOnCol ? [{ name: modifyOnCol.name, val: "sysdate" }] : []), ...(modifyByCol ? [{ name: modifyByCol.name, val: "Core.User_Env.Get_User_Id" }] : [])]
+    : [];
+  const maxSoftColLen = Math.max(0, ...softSetCols.map((s) => s.name.length));
+  procs.push({
+    signature: `Procedure Del_${procSuffix}(${delParams})`,
+    body: [
+      "  begin",
+      ...(stateCol
+        ? [
+            `    update ${tableName}`,
+            ...softSetCols.map((s, idx) => `    ${idx === 0 ? "       set " : "           "}${s.name.padEnd(maxSoftColLen)} = ${s.val}${idx < softSetCols.length - 1 ? "," : ""}`),
+            ...whereCols.map((c, idx) => `    ${idx === 0 ? "     where " : "       and "}${c.name} = i_${c.name}${idx === whereCols.length - 1 ? ";" : ""}`),
+          ]
+        : [`    delete from ${tableName} where ${whereCols.map((c) => `${c.name} = i_${c.name}`).join(" and ")};`]),
+      "  end;",
+    ],
+  });
+  return procs;
+}
 
-  return out.join("\n");
+/** A hand-written subprogram: header from its fields, body verbatim (indented two spaces). */
+function customProcedure(proc: PackageProcedure): DmlProcedure {
+  const name = proc.name.trim() || "Unnamed";
+  const params = proc.params.trim();
+  const head = `${proc.kind === "function" ? "Function" : "Procedure"} ${name}${params ? `(${params})` : ""}`;
+  return {
+    signature: proc.kind === "function" ? `${head} return ${proc.returns?.trim() || "varchar2"}` : head,
+    body: proc.body.trim() ? proc.body.replace(/\s+$/, "").split("\n").map((line) => `  ${line}`) : ["  begin", "    null;", "  end;"],
+  };
+}
+
+const packageBodyLines = (name: string, procs: DmlProcedure[], declarations = "") => [
+  `create or replace package body ${name} is`,
+  ...(declarations.trim() ? declarations.replace(/\s+$/, "").split("\n") : []),
+  ...procs.flatMap((proc) => [DML_SEP, `  ${proc.signature} is`, ...proc.body]),
+  DML_SEP,
+  `end ${name};`,
+];
+
+const packageSpecLines = (name: string, procs: DmlProcedure[]) => [
+  `create or replace package ${name} is`,
+  ...procs.flatMap((proc) => [DML_SEP, `  ${proc.signature};`]),
+  DML_SEP,
+  `end ${name};`,
+];
+
+/** The subprograms a package carries: its covered tables' CRUD, then its own, in that order. */
+export function packageProcedures(schema: Schema, pkg: SchemaPackage): DmlProcedure[] {
+  const covered = new Set(pkg.tableIds);
+  return [
+    ...(pkg.includeCrud ? schema.tables.filter((table) => covered.has(table.id)).flatMap(tableProcedures) : []),
+    ...pkg.procedures.map(customProcedure),
+  ];
+}
+
+/** `<Name>` of an explicit package: what the user typed, or a numbered stand-in so the script stays valid. */
+export const packageDisplayName = (pkg: SchemaPackage, index: number) => normalizeIdentifier(pkg.name.trim() || `Package_${index + 1}`);
+
+/** The spec and body of one package, as the Packages tab previews them. */
+export function generatePackage(schema: Schema, pkg: SchemaPackage, index = 0) {
+  const name = packageDisplayName(pkg, index);
+  const procs = packageProcedures(schema, pkg);
+  return { name, spec: packageSpecLines(name, procs).join("\n"), body: packageBodyLines(name, procs, pkg.declarations).join("\n") };
+}
+
+/**
+ * With no packages defined the schema keeps its one derived `<Prefix>_Dml` body,
+ * byte-for-byte as before. Once any exists, only the defined packages are emitted
+ * -- each as a spec then a body -- and a table in none of them gets no CRUD.
+ */
+export function generateDML(schema: Schema) {
+  const packages = schema.packages ?? [];
+  if (packages.length)
+    return packages.map((pkg, index) => { const out = generatePackage(schema, pkg, index); return `${out.spec}\n/\n\n${out.body}\n/`; }).join("\n\n");
+  return packageBodyLines(getPackageName(schema), schema.tables.flatMap(tableProcedures)).join("\n");
 }
 
 export const generatePLSQL = generateDML;
