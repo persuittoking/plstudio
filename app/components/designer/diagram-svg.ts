@@ -181,8 +181,9 @@ const corner = (px: number) => Math.round(px * (10 / 14) * 10) / 10;
  * "bottom" (the Document's ER figure) leaves the name to the document and draws
  * the counts and the legend large, under the diagram.
  */
-export function renderDiagramSVG(schema: Schema, { theme = "light", edges: edgeStyle = "curved", key = "top" }: { theme?: DiagramTheme; edges?: "curved" | "straight"; key?: "top" | "bottom" } = {}) {
-  const colors = THEMES[theme];
+export function renderDiagramSVG(schema: Schema, { theme = "light", edges: edgeStyle = "curved", key = "top", background }: { theme?: DiagramTheme; edges?: "curved" | "straight"; key?: "top" | "bottom"; background?: string } = {}) {
+  // `background` lets the Document draw the figure on the page's own colour.
+  const colors = background ? { ...THEMES[theme], background } : THEMES[theme];
   const dialect = dialectOf(schema);
   const canonical = schema.relationships?.length ? schema : normalizeRelationships(schema);
   const layout = reflowDiagram(canonical);

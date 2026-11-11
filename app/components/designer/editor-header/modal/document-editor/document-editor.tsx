@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Editor, Range } from "@tiptap/core";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
@@ -282,11 +282,24 @@ type CustomColor = { value: string; apply: (hex: string) => void; words: EditorS
  * formatted stays selected (and the selection bubble stays open); the colour
  * code field does take it, and Tiptap keeps the selection for when it applies.
  */
+/** Tells every other colour panel to close: only one is open at a time. */
+const PICKER_OPENED = "doc-picker-opened";
+
 function Picker({ label, icon, current, options, extra, custom, none }: {
   label: string; icon: ReactNode; current?: string; options: PickerOption[]; extra?: PickerOption[]; custom?: CustomColor; none?: PickerOption;
 }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const id = useId();
+  // Opening this panel closes any other one -- the highlight's, the text colour's, the badge's, the note's.
+  useEffect(() => {
+    const other = (event: Event) => { if ((event as CustomEvent<string>).detail !== id) setOpen(false); };
+    document.addEventListener(PICKER_OPENED, other);
+    return () => document.removeEventListener(PICKER_OPENED, other);
+  }, [id]);
+  useEffect(() => {
+    if (open) document.dispatchEvent(new CustomEvent(PICKER_OPENED, { detail: id }));
+  }, [id, open]);
   useEffect(() => {
     if (!open) return;
     const away = (event: MouseEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
@@ -384,6 +397,13 @@ function ColorPicker({ editor, words, mark }: { editor: Editor; words: EditorStr
   const palette = highlight ? SWATCH : TEXT_SWATCH;
   /** The colour in use as a code: a theme colour shows the swatch it is drawn with here. */
   const code = isHexColor(color) ? color : color in palette ? palette[color as HighlightColor] : "";
+  /*
+   * With nothing chosen yet, the panel starts on the default colour -- yellow
+   * for a highlight, blue for coloured words -- rather than on "none": that is
+   * the one the button shows and the first click applies.
+   */
+  const fallback: HighlightColor = highlight ? "yellow" : "blue";
+  const shown = color || fallback;
   const set = (value: string) => editor.chain().focus().setMark(mark, { color: value }).run();
   const swatch = (value: string) => highlight
     ? <span className="size-5 rounded-full ring-1 ring-black/10" style={{ background: value }} />
@@ -392,14 +412,21 @@ function ColorPicker({ editor, words, mark }: { editor: Editor; words: EditorStr
     <Picker
       label={highlight ? words.marks.highlightColors : words.marks.textColors}
       icon={highlight ? <HighlighterIcon /> : <BaselineIcon />}
-      current={code || undefined}
-      options={HIGHLIGHT_COLORS.map((preset) => ({ id: preset, label: words.colors[preset], active: color === preset, pick: () => set(preset), swatch: swatch(palette[preset]) }))}
+      current={code || palette[fallback]}
+      options={HIGHLIGHT_COLORS.map((preset) => ({
+        id: preset,
+        label: preset === fallback && !color ? `${words.colors[preset]} · ${words.colorPicker.default}` : words.colors[preset],
+        active: shown === preset,
+        pick: () => set(preset),
+        swatch: swatch(palette[preset]),
+      }))}
       extra={EXTRA_COLORS.map(([hex, name]) => ({
         id: hex, label: `${words.colorPicker.names[name] ?? name} · ${hex.toUpperCase()}`, active: color === hex, pick: () => set(hex),
         swatch: highlight ? <span className="size-4.5 rounded-full ring-1 ring-black/10" style={{ background: hex }} /> : <span className="text-[15px] leading-none font-extrabold" style={{ color: hex }}>A</span>,
       }))}
-      custom={{ value: (code || palette.yellow).toUpperCase(), apply: set, words: words.colorPicker }}
-      none={{ id: "none", label: words.colors.none, active: !color, pick: () => editor.chain().focus().unsetMark(mark).run(), swatch: <BanIcon /> }}
+      custom={{ value: (code || palette[fallback]).toUpperCase(), apply: set, words: words.colorPicker }}
+      // Taking a colour off stays possible, but it is never what the panel starts on.
+      none={color ? { id: "none", label: words.colors.none, active: false, pick: () => editor.chain().focus().unsetMark(mark).run(), swatch: <BanIcon /> } : undefined}
     />
   );
 }
@@ -428,10 +455,11 @@ function NoteColorPicker({ editor, words }: { editor: Editor; words: EditorStrin
   );
 }
 
+// `color` follows the theme; `hex` is the same colour as a code, for the labels and the colour field.
 const BADGES = [
-  { tone: "", color: "var(--primary)", word: "plain" },
-  { tone: "good", color: "var(--system-green)", word: "good" },
-  { tone: "bad", color: "var(--destructive)", word: "bad" },
+  { tone: "", color: "var(--primary)", hex: "#007aff", word: "plain" },
+  { tone: "good", color: "var(--system-green)", hex: "#34c759", word: "good" },
+  { tone: "bad", color: "var(--destructive)", hex: "#ff3b30", word: "bad" },
 ] as const;
 
 /** The three badges ([[BOR]], [[+YANGI]], [[-x]]) in one picker. */
@@ -439,6 +467,7 @@ function BadgePicker({ editor, words }: { editor: Editor; words: EditorStrings }
   const tone = useEditorState({ editor, selector: ({ editor: current }) => (current.isActive("badge") ? String(current.getAttributes("badge").tone ?? "") : null) });
   const set = (value: string) => editor.chain().focus().setMark("badge", { tone: value }).run();
   const shown = BADGES.find((badge) => badge.tone === tone)?.color ?? (tone && /^#/.test(tone) ? tone : undefined);
+  const shownHex = BADGES.find((badge) => badge.tone === tone)?.hex ?? (tone && /^#/.test(tone) ? tone : undefined);
   const swatch = (color: string) => <TagIcon className="size-4!" style={{ color }} />;
   return (
     <Picker
@@ -448,13 +477,13 @@ function BadgePicker({ editor, words }: { editor: Editor; words: EditorStrings }
       // The default badge comes first: a badge always has a colour, so there is no "no colour".
       options={BADGES.map((badge) => ({
         id: badge.word,
-        label: badge.word === "plain" ? `${words.badges.default} · ${badge.color.toUpperCase()}` : words.badges[badge.word],
+        label: badge.word === "plain" ? `${words.badges.default} · ${badge.hex.toUpperCase()}` : words.badges[badge.word],
         active: tone === badge.tone,
         pick: () => set(badge.tone),
         swatch: swatch(badge.color),
       }))}
       extra={EXTRA_COLORS.map(([hex, name]) => ({ id: hex, label: `${words.colorPicker.names[name] ?? name} · ${hex.toUpperCase()}`, active: tone === hex, pick: () => set(hex), swatch: swatch(hex) }))}
-      custom={{ value: (shown ?? BADGES[0].color).toUpperCase(), apply: (hex) => set(hex.toLowerCase()), words: words.colorPicker }}
+      custom={{ value: (shownHex ?? BADGES[0].hex).toUpperCase(), apply: (hex) => set(hex.toLowerCase()), words: words.colorPicker }}
     />
   );
 }

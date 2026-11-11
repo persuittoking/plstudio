@@ -196,12 +196,13 @@ describe("language versions", () => {
     expect(body("ru")).not.toContain("Hujjat</h1>");
     expect(body()).toContain("<h1>Hujjat</h1>");
   });
-  it("starts the draft lively: highlights, coloured words and a callout, in every language", async () => {
+  it("starts the draft lively: highlights, badges, coloured table names and a callout, in every language", async () => {
     const { withLanguage } = await import("@/app/lib/document-i18n");
     for (const lang of ["uz", "ru", "en"] as const) {
       const html = renderDocument(schema(), withLanguage(lang, documentTemplate(schema(), lang)), { theme: "dark", diagrams: new Map(), generatedAt: "", lang }).body;
       expect(html, lang).toContain('<mark class="hl yellow">');
-      expect(html, lang).toContain('<span class="tc green">');
+      expect(html, lang).toContain('<span class="badge good">');
+      expect(html, lang).toContain('<span class="tc custom" style="color:');
       expect(html, lang).toContain('<p class="callout">');
     }
   });

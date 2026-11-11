@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { FileUpIcon, FolderOpenIcon, ListPlusIcon } from "lucide-react";
 import { generateDDL, generateMermaidER } from "@/app/lib/generators";
 import { exportSchemaJson } from "@/app/lib/schema-json";
+import { generatePostgres } from "@/app/lib/postgres";
+import { looksLikePostgres } from "@/app/lib/postgres-import";
 import { isMermaidER } from "@/app/lib/mermaid";
 import type { Schema } from "@/app/lib/schema";
 import { Alert, AlertTitle } from "@/components/ui/alert";
@@ -19,11 +21,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { highlightJson, highlightMermaid, highlightSql } from "../../highlight";
 
-export type ImportFormat = "ddl" | "mermaid" | "json";
+export type ImportFormat = "ddl" | "postgres" | "mermaid" | "json";
 export type ImportMessage = { ok: boolean; text: string };
 
 const importTabs = [
   ["ddl", "Oracle DDL"],
+  ["postgres", "PostgreSQL"],
   ["mermaid", "Mermaid ER"],
   ["json", "JSON"],
 ] as const satisfies ReadonlyArray<readonly [ImportFormat, string]>;
@@ -33,12 +36,14 @@ const MAX_FILE_BYTES = 5_000_000;
 
 const DESCRIPTION: Record<ImportFormat, string> = {
   ddl: "Supported CREATE TABLE subset · all-or-nothing · add to this project or replace it",
+  postgres: "PostgreSQL CREATE TABLE, ALTER TABLE, CREATE INDEX, COMMENT ON and enum types (pg_dump works too) · replace makes this a PostgreSQL diagram",
   mermaid: "Mermaid erDiagram (entities, keys, relationships & comments) · add or replace",
   json: "A diagram exported from the JSON tab · replace restores it whole, add merges its tables in under fresh ids",
 };
 
 const PLACEHOLDER: Record<ImportFormat, string> = {
   ddl: "CREATE TABLE STUDENT ( ID NUMBER NOT NULL, NAME VARCHAR2(100), CONSTRAINT PK_STUDENT PRIMARY KEY (ID) );",
+  postgres: "CREATE TABLE student (\n  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n  name varchar(100) NOT NULL,\n  profile jsonb,\n  is_active boolean DEFAULT true\n);",
   mermaid: 'erDiagram\n    STUDENT {\n        NUMBER id PK\n        VARCHAR2(100) name\n    }\n    ENROLLMENT {\n        NUMBER student_id FK\n        VARCHAR2(20) course_code\n    }\n    STUDENT ||--o{ ENROLLMENT : "has"',
   json: '{ "formatVersion": 1, "schema": { "name": "Registrar", "tables": [ … ] } }',
 };
@@ -69,7 +74,12 @@ export const ImportModal = ({
   onReplace: (text: string, format: ImportFormat) => void;
   onAppend: (text: string, format: ImportFormat) => void;
 }) => {
-  const [format, setFormat] = useState<ImportFormat>("ddl");
+  // A PostgreSQL diagram opens on the PostgreSQL tab.
+  const postgresDiagram = schema.dialect === "postgres";
+  const [format, setFormat] = useState<ImportFormat>(postgresDiagram ? "postgres" : "ddl");
+  useEffect(() => {
+    if (isOpen) setFormat((current) => (current === "ddl" && postgresDiagram ? "postgres" : current === "postgres" && !postgresDiagram ? "ddl" : current));
+  }, [isOpen, postgresDiagram]);
   const [importText, setImportText] = useState("");
   const highlightRef = useRef<HTMLPreElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -93,7 +103,7 @@ export const ImportModal = ({
     } else if (trimmed.startsWith("%%") || isMermaidER(text)) {
       setFormat("mermaid");
     } else {
-      setFormat("ddl");
+      setFormat(looksLikePostgres(text) ? "postgres" : "ddl");
     }
   };
 
@@ -114,7 +124,9 @@ export const ImportModal = ({
             ? "Schema JSON input"
             : format === "mermaid"
               ? "Mermaid ER input"
-              : "Oracle DDL input"
+              : format === "postgres"
+                ? "PostgreSQL input"
+                : "Oracle DDL input"
         }
         className="sql-input"
         placeholder={PLACEHOLDER[format]}
@@ -190,7 +202,9 @@ export const ImportModal = ({
                 ? exportSchemaJson(schema)
                 : format === "mermaid"
                   ? generateMermaidER(schema)
-                  : generateDDL(schema),
+                  : format === "postgres"
+                    ? generatePostgres(schema).sql
+                    : generateDDL(schema),
             )
           }
         >

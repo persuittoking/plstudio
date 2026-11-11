@@ -101,7 +101,8 @@ function splitTopLevel(value: string) {
 function parseType(tail: string): { type: OracleType; size: string; rest: string } | null {
   const interval = tail.match(/^INTERVAL\s+YEAR\s*(?:\(\s*\d+\s*\))?\s+TO\s+MONTH|^INTERVAL\s+DAY\s*(?:\(\s*\d+\s*\))?\s+TO\s+SECOND\s*(?:\(\s*\d+\s*\))?/i);
   if (interval) return { type: /YEAR/i.test(interval[0]) ? "INTERVAL YEAR TO MONTH" : "INTERVAL DAY TO SECOND", size: "", rest: tail.slice(interval[0].length) };
-  const timestamp = tail.match(/^TIMESTAMP\b\s*(?:\(\s*(\d+)\s*\))?(\s+WITH\s+LOCAL\s+TIME\s+ZONE|\s+WITH\s+TIME\s+ZONE)?/i);
+  // The space before a precision is optional, and must not be eaten when there is none: `TIMESTAMP WITH TIME ZONE` needs it before WITH.
+  const timestamp = tail.match(/^TIMESTAMP\b(?:\s*\(\s*(\d+)\s*\))?(\s+WITH\s+LOCAL\s+TIME\s+ZONE|\s+WITH\s+TIME\s+ZONE)?/i);
   if (timestamp) {
     const type = timestamp[2] ? (/LOCAL/i.test(timestamp[2]) ? "TIMESTAMP WITH LOCAL TIME ZONE" : "TIMESTAMP WITH TIME ZONE") : "TIMESTAMP";
     return { type, size: type === "TIMESTAMP" ? timestamp[1] ?? "" : "", rest: tail.slice(timestamp[0].length) };
@@ -416,11 +417,16 @@ export type AppendResult = {
  * finds the project's, and a reference to a skipped table is re-pointed at the
  * project's table and column of that name.
  */
-export function appendCreateTable(base: Schema, sql: string): AppendResult {
+export function appendCreateTable(
+  base: Schema,
+  sql: string,
+  /** The reader of the script: Oracle's by default; the PostgreSQL import passes its own (`app/lib/postgres-import.ts`). */
+  parse: (sql: string, options: ParseOptions) => ParseResult = parseCreateTable,
+): AppendResult {
   if (isMermaidER(sql)) {
     return appendMermaidER(base, sql);
   }
-  const parsed = parseCreateTable(sql, { knownTables: base.tables });
+  const parsed = parse(sql, { knownTables: base.tables });
   if (!parsed.schema) return { schema: null, added: [], skipped: [], warnings: parsed.warnings, errors: parsed.errors };
 
   /** Imported table id -> the project table of the same name it defers to. */

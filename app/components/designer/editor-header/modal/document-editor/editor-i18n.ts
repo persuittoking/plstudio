@@ -21,7 +21,7 @@ export type EditorStrings = {
   marks: { bold: string; italic: string; code: string; badge: string; badgeGood: string; badgeBad: string; highlight: string; highlightColors: string; textColor: string; textColors: string; clear: string };
   colors: { yellow: string; green: string; blue: string; pink: string; none: string };
   badges: { label: string; plain: string; good: string; bad: string; default: string };
-  colorPicker: { choose: string; code: string; apply: string; names: Record<string, string> };
+  colorPicker: { choose: string; code: string; apply: string; default: string; names: Record<string, string> };
   noteColor: { label: string; default: string };
   lists: { bullets: string; numbers: string };
   history: { undo: string; redo: string };
@@ -62,7 +62,7 @@ const UZ: EditorStrings = {
   badges: { label: "Belgi", plain: "Ko'k", good: "Yashil (YANGI)", bad: "Qizil", default: "Odatiy" },
   noteColor: { label: "Izoh rangi", default: "Odatiy" },
   colorPicker: {
-    choose: "Rangni tanlash", code: "Rang kodi", apply: "Qo'llash",
+    choose: "Rangni tanlash", code: "Rang kodi", apply: "Qo'llash", default: "odatiy",
     names: { yellow: "Sariq", green: "Yashil", blue: "Ko'k", pink: "Pushti", red: "Qizil", orange: "To'q sariq", amber: "Qahrabo", lime: "Och yashil", emerald: "Zumrad", teal: "Moviy-yashil", cyan: "Moviy", indigo: "Indigo", violet: "Binafsha", fuchsia: "Fuksiya", brown: "Jigarrang", slate: "Kulrang" },
   },
   lists: { bullets: "Ro'yxat", numbers: "Raqamli ro'yxat" },
@@ -104,7 +104,7 @@ const RU: EditorStrings = {
   badges: { label: "Метка", plain: "Синяя", good: "Зелёная (НОВОЕ)", bad: "Красная", default: "Обычная" },
   noteColor: { label: "Цвет примечания", default: "По умолчанию" },
   colorPicker: {
-    choose: "Выбрать цвет", code: "Код цвета", apply: "Применить",
+    choose: "Выбрать цвет", code: "Код цвета", apply: "Применить", default: "по умолчанию",
     names: { yellow: "Жёлтый", green: "Зелёный", blue: "Синий", pink: "Розовый", red: "Красный", orange: "Оранжевый", amber: "Янтарный", lime: "Лаймовый", emerald: "Изумрудный", teal: "Бирюзовый", cyan: "Голубой", indigo: "Индиго", violet: "Фиолетовый", fuchsia: "Фуксия", brown: "Коричневый", slate: "Серый" },
   },
   lists: { bullets: "Список", numbers: "Нумерованный список" },
@@ -146,7 +146,7 @@ const EN: EditorStrings = {
   badges: { label: "Badge", plain: "Blue", good: "Green (NEW)", bad: "Red", default: "Default" },
   noteColor: { label: "Note colour", default: "Default" },
   colorPicker: {
-    choose: "Choose a colour", code: "Colour code", apply: "Apply",
+    choose: "Choose a colour", code: "Colour code", apply: "Apply", default: "default",
     names: { yellow: "Yellow", green: "Green", blue: "Blue", pink: "Pink", red: "Red", orange: "Orange", amber: "Amber", lime: "Lime", emerald: "Emerald", teal: "Teal", cyan: "Cyan", indigo: "Indigo", violet: "Violet", fuchsia: "Fuchsia", brown: "Brown", slate: "Slate" },
   },
   lists: { bullets: "Bulleted list", numbers: "Numbered list" },

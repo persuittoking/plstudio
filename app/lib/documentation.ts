@@ -189,7 +189,7 @@ export function diagramSources(_schema: Schema, blocks: DocBlock[]): string[] {
  * so the page can scale it, keeping the `viewBox`.
  */
 export function canvasDiagram(schema: Schema, theme: DocumentTheme): DocumentDiagram {
-  const svg = renderDiagramSVG(schema, { theme, edges: "straight", key: "bottom" });
+  const svg = renderDiagramSVG(schema, { theme, edges: "straight", key: "bottom", background: CANVAS_BACKGROUND[theme] });
   const open = svg.match(/^<svg\b[^>]*>/)?.[0] ?? "<svg>";
   const size = (name: string) => Number(open.match(new RegExp(`\\s${name}="([\\d.]+)"`))?.[1] ?? 800);
   return { markup: svg.replace(open, open.replace(/\s(width|height)="[\d.]+"/g, "")), width: size("width"), height: size("height") };
@@ -376,9 +376,15 @@ const SYNTAX_VARS: Record<DocumentTheme, string> = {
   dark: "--syn-keyword:#ff7b72;--syn-string:#a5d6ff;--syn-number:#79c0ff;--syn-comment:#8b949e;--syn-title:#d2a8ff;--syn-type:#ffa657;--syn-tag:#7ee787",
 };
 
+/**
+ * The page is drawn on the colour the diagram is drawn on in the app: `--canvas-surface` of globals.css
+ * in light and dark, so an exported document looks like the canvas it was made on.
+ */
+export const CANVAS_BACKGROUND: Record<DocumentTheme, string> = { light: "#ffffff", dark: "#1c1c1e" };
+
 const THEME_VARS: Record<DocumentTheme, string> = {
   light: "--bg:#ffffff;--text:#1f2328;--muted:#59636e;--panel:#f6f8fa;--border:#d1d9e0;--chip:#eff2f5;--code:#0550ae;--accent:#0969da;--good:#1a7f37;--good-bg:#dafbe1;--bad:#cf222e;--bad-bg:#ffebe9;--badge-bg:#ddf4ff;--warm:#bc4c00;--hl-yellow:#fff0a0;--hl-green:#c8f2d2;--hl-blue:#cfe7ff;--hl-pink:#ffd5e5;--callout-bg:#eef6ff;--note-default:#6366f1;--warn:#9a6700;--warn-bg:#fff8c5;--tc-yellow:#b45309;--tc-green:#15803d;--tc-blue:#1d4ed8;--tc-pink:#be185d",
-  dark: "--bg:#0d1117;--text:#e6edf3;--muted:#8b949e;--panel:#161b22;--border:#30363d;--chip:#1f2733;--code:#79c0ff;--accent:#58a6ff;--good:#3fb950;--good-bg:#12351f;--bad:#f85149;--bad-bg:#3c1618;--badge-bg:#0c2d4d;--warm:#f0883e;--hl-yellow:rgba(250,204,21,.32);--hl-green:rgba(63,185,80,.32);--hl-blue:rgba(88,166,255,.32);--hl-pink:rgba(247,120,186,.32);--callout-bg:rgba(88,166,255,.10);--note-default:#818cf8;--warn:#d29922;--warn-bg:rgba(210,153,34,.12);--tc-yellow:#facc15;--tc-green:#4ade80;--tc-blue:#60a5fa;--tc-pink:#f472b6",
+  dark: "--bg:#1c1c1e;--text:#e6edf3;--muted:#8b949e;--panel:#242426;--border:#3a3a3c;--chip:#2c2c2e;--code:#79c0ff;--accent:#58a6ff;--good:#3fb950;--good-bg:#12351f;--bad:#f85149;--bad-bg:#3c1618;--badge-bg:#0c2d4d;--warm:#f0883e;--hl-yellow:rgba(250,204,21,.32);--hl-green:rgba(63,185,80,.32);--hl-blue:rgba(88,166,255,.32);--hl-pink:rgba(247,120,186,.32);--callout-bg:rgba(88,166,255,.10);--note-default:#818cf8;--warn:#d29922;--warn-bg:rgba(210,153,34,.12);--tc-yellow:#facc15;--tc-green:#4ade80;--tc-blue:#60a5fa;--tc-pink:#f472b6",
 };
 
 /** Scoped to `.doc` so the page renders the same inside an iframe, a file or an SVG `foreignObject`. */

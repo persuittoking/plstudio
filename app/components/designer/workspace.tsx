@@ -465,6 +465,42 @@ export default function Workspace({
     selectTable(result.added[0]?.id ?? null);
     revealTables(result.added);
   };
+  /**
+   * A PostgreSQL script. Replacing makes the project a PostgreSQL diagram;
+   * adding keeps the project's database and brings the tables in with their
+   * PostgreSQL types. The first warning is shown, since it names what was
+   * set aside (an unknown type, an EXCLUDE clause).
+   */
+  const loadPostgresImport = () => import("@/app/lib/postgres-import");
+  const importPostgres = async (text: string) => {
+    const { parsePostgres } = await loadPostgresImport();
+    const result = parsePostgres(text);
+    if (!result.schema) {
+      setImportMessage({ ok: false, text: result.errors.join(" ") });
+      return;
+    }
+    setImportMessage({
+      ok: true,
+      text: `${result.schema.tables.length} PostgreSQL table(s) imported.${result.warnings.length ? ` ${result.warnings.length} warning(s): ${result.warnings[0]}` : ""}`,
+    });
+    commit({ ...result.schema, id: schema.id, name: schema.name, revision: schema.revision });
+    selectTable(result.schema.tables[0]?.id ?? null);
+  };
+  const appendPostgresTables = async (text: string) => {
+    const { appendPostgres } = await loadPostgresImport();
+    const result = appendPostgres(schemaRef.current, text);
+    if (!result.schema) {
+      setImportMessage({ ok: false, text: result.errors.join(" ") });
+      return;
+    }
+    setImportMessage({
+      ok: true,
+      text: `${result.added.length} table(s) added.${result.skipped.length ? ` Already in this project: ${result.skipped.join(", ")}.` : ""}${result.warnings.length ? ` ${result.warnings.length} warning(s): ${result.warnings[0]}` : ""}`,
+    });
+    commit(result.schema);
+    selectTable(result.added[0]?.id ?? null);
+    revealTables(result.added);
+  };
   const clearInvalidForeignKeys = () => {
     const next = {
       ...schema,
@@ -1044,11 +1080,18 @@ export default function Workspace({
       hint: hint("shortcutsHelp"),
     },
     { separator: true },
-    {
-      label: "Oracle target: 12.2+",
-      onSelect: () =>
-        toast.success("Generating DDL for Oracle 12.2 and later."),
-    },
+    // The database the diagram is for, and the version its main script targets.
+    dialectOf(schema) === "postgres"
+      ? {
+        label: "PostgreSQL target: 13+",
+        onSelect: () =>
+          toast.success("Generating SQL for PostgreSQL 13 and later. The Oracle DDL (12.2+) stays in Export."),
+      }
+      : {
+        label: "Oracle target: 12.2+",
+        onSelect: () =>
+          toast.success("Generating DDL for Oracle 12.2 and later."),
+      },
   ];
 
   const tableEntity = (table: Table) => (
@@ -1367,11 +1410,13 @@ export default function Workspace({
         onReplace={(text, format) => {
           if (format === "json") importJson(text);
           else if (format === "mermaid") void importMermaid(text);
+          else if (format === "postgres") void importPostgres(text);
           else void importSchema(text);
         }}
         onAppend={(text, format) => {
           if (format === "json") appendJson(text);
           else if (format === "mermaid") void appendMermaid(text);
+          else if (format === "postgres") void appendPostgresTables(text);
           else void appendSchema(text);
         }}
         onClearInvalidForeignKeys={clearInvalidForeignKeys}
